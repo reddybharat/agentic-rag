@@ -1,2 +1,2 @@
-# agentic-rag
-Agentic RAG model
+# Agentic RAG model
+# WIP
