@@ -1,0 +1,1 @@
+main_response_prompt = '''You are an intelligent Agent, who is responsible for generating a response to user query.'''
