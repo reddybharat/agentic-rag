@@ -1,7 +1,7 @@
 from fastapi import HTTPException
 from google import genai
 from google.genai import types
-from basic.prompts import main_response_prompt
+from src.helpers.prompts import main_response_prompt
 from dotenv import load_dotenv
 import os
 load_dotenv()
