@@ -12,4 +12,8 @@ dependencies = [
     "langgraph>=0.5.1",
     "streamlit>=1.32.0",
     "pillow>=10.0.0",
+    "pypdf>=5.7.0",
+    "google-generativeai>=0.8.5",
+    "chromadb>=1.0.15",
+    "streamlit-autorefresh>=1.0.1",
 ]
