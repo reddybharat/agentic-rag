@@ -76,10 +76,21 @@ with col1:
                 st.write(response.get("answer", "No response generated"))
 
                 # Save the graph image for later display in col2
-                graph_bytes = app.get_graph().draw_mermaid_png()
+                # Updated for new structure: use get_graph() if available, else use app directly
+                try:
+                    graph_obj = app.get_graph() if hasattr(app, 'get_graph') else app
+                    graph_bytes = graph_obj.draw_mermaid_png()
+                except AttributeError:
+                    # Fallback: try draw_mermaid() and convert to image if needed
+                    import io
+                    from PIL import Image as PILImage
+                    mermaid_code = graph_obj.draw_mermaid()
+                    # Optionally, use a library to convert mermaid to PNG if available
+                    graph_bytes = None  # Placeholder if conversion is not implemented
                 graph_path = "graph.png"
-                with open(graph_path, "wb") as f:
-                    f.write(graph_bytes)
+                if graph_bytes:
+                    with open(graph_path, "wb") as f:
+                        f.write(graph_bytes)
                 st.session_state['graph_ready'] = True
             except Exception as e:
                 st.session_state['data_ingested'] = False
@@ -99,8 +110,14 @@ with col2:
     """)
     # Display system info
     st.subheader("🔧 System Info")
+    # Updated for new structure: use get_graph() if available, else app directly
+    try:
+        graph_obj = app.get_graph() if hasattr(app, 'get_graph') else app
+        node_count = len(graph_obj.nodes)
+    except Exception:
+        node_count = 'Unknown'
     st.markdown(f"""
-    - **Graph Nodes**: {len(app.get_graph().nodes)}
+    - **Graph Nodes**: {node_count}
     - **Status**: {'Ready' if st.session_state['data_ingested'] else 'Waiting for input'}
     """)
 

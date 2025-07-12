@@ -3,7 +3,7 @@ from src.utils.data_ingest import IngestData
 from src.utils.retriever import Retriever
 
 
-def response_node(state: RAGAgentState) -> RAGAgentState:
+def ingestor_node(state: RAGAgentState) -> RAGAgentState:
     """
     A node that can ingest user files into the vector DB (if needed) and then generate a response to the user query using the vectorDB context.
     """

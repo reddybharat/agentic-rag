@@ -4,7 +4,7 @@ import time
 import logging
 from pypdf import PdfReader, PdfWriter
 import re
-from src.tools.gemini_embedding import GeminiEmbeddingFunction
+from src.utils.gemini_embedding import GeminiEmbeddingFunction
 import chromadb
 from typing import List
 from pathlib import Path
