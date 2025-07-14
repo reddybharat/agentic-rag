@@ -3,6 +3,8 @@ from src.graphs import builder
 import os
 from PIL import Image
 from src.utils.logger import logger
+from dotenv import load_dotenv
+load_dotenv()
 
 # Set page config
 st.set_page_config(
@@ -35,6 +37,12 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     st.subheader("Upload PDF files and ask a question")
+    # Web search toggle
+    web_search = st.toggle(
+        "Enable Web Search",
+        value=False,
+        help="Toggle to allow the agent to use web search in addition to your uploaded files."
+    )
     uploaded_files = st.file_uploader(
         "Upload PDF files (multiple allowed):",
         type=["pdf"],
@@ -68,15 +76,17 @@ with col1:
                     "files_uploaded": file_paths,
                     "query": query,
                     "data_ingested": False,
-                    "answer": ""
+                    "answer": "",
+                    "messages": [],  # Restore or add message history support
+                    "web_search": web_search
                 })
                 st.session_state['data_ingested'] = response.get("data_ingested", False)
                 st.session_state['file_paths'] = file_paths
+                
                 st.subheader("Response")
                 st.write(response.get("answer", "No response generated"))
 
                 # Save the graph image for later display in col2
-                # Updated for new structure: use get_graph() if available, else use app directly
                 try:
                     graph_obj = app.get_graph() if hasattr(app, 'get_graph') else app
                     graph_bytes = graph_obj.draw_mermaid_png()
@@ -98,7 +108,7 @@ with col1:
                 st.error(f"Error: {str(e)}")
 
 with col2:
-    # Sidebar with information
+    # About section
     st.subheader("ℹ️ About")
     st.markdown("""
     This system uses a graph-based agent architecture to process your queries and generate responses.
@@ -108,9 +118,9 @@ with col2:
     2. The system ingests and answers in one step
     3. View the response and graph visualization
     """)
+    
     # Display system info
     st.subheader("🔧 System Info")
-    # Updated for new structure: use get_graph() if available, else app directly
     try:
         graph_obj = app.get_graph() if hasattr(app, 'get_graph') else app
         node_count = len(graph_obj.nodes)
@@ -129,13 +139,4 @@ with col2:
 
 # Footer
 st.markdown("---")
-st.markdown("*Powered by LangGraph and Streamlit*")
-
-# Show logs in sidebar
-with st.sidebar:
-    st.subheader("📝 Internal Logs")
-    logs = logger.get_logs()
-    if logs:
-        st.text_area("Logs", value="\n".join(logs), height=300, key="logs_display")
-    else:
-        st.info("No logs yet.") 
+st.markdown("*Powered by LangGraph and Streamlit*") 

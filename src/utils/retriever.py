@@ -30,11 +30,6 @@ class Retriever:
                 logger.log("[Retriever] Configuring Gemini API with provided key.")
                 genai.configure(api_key=key)
                 model = genai.GenerativeModel(self.model)
-                generate_content_config = types.GenerateContentConfig(
-                    temperature=0,
-                    response_mime_type="text/plain",
-                    system_instruction=[types.Part.from_text(text=(rag_prompt)),],
-                )
                 logger.log(f"[Retriever] Generating answer with context: {context[:100]}...")
                 response = model.generate_content(context)
                 logger.log(f"[Retriever] Received response: {response.text.strip()[:100]}...")

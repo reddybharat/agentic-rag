@@ -1,6 +1,7 @@
 from src.graphs.type import RAGAgentState
 from src.utils.data_ingest import IngestData
 from src.utils.retriever import Retriever
+from langchain_core.messages import AIMessage, HumanMessage
 
 def retriever_node(state: RAGAgentState) -> RAGAgentState:
     """
@@ -8,5 +9,13 @@ def retriever_node(state: RAGAgentState) -> RAGAgentState:
     """
     db = IngestData().load_chroma_collection("devuser")
     result = Retriever().run_retriever_node(state["query"], db, 5)
-    state['answer'] = result
-    return state 
+    # Prepare new messages to append
+    new_messages = [
+        HumanMessage(content=state["query"]),
+        AIMessage(content=result)
+    ]
+    return {
+        **state,
+        "messages": new_messages,
+        "answer": result
+    } 
