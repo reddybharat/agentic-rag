@@ -62,19 +62,39 @@ with col1:
                 shutil.copyfileobj(uploaded_file, f)
             file_paths.append(file_path)
 
+    # First row: Quick test buttons
+    st.markdown("**Quick Test Queries:**")
+    colA, colB, colC = st.columns(3)
+    with colA:
+        weather_clicked = st.button("Weather in London", type="secondary", use_container_width=True)
+    with colB:
+        richest_clicked = st.button("Top 10 Richest People", type="secondary", use_container_width=True)
+    with colC:
+        ai_news_clicked = st.button("Latest AI News", type="secondary", use_container_width=True)
+
+    # Second row: Query input and submit
     query = st.text_area(
         "Enter your question:",
-        placeholder="e.g., Give me list of Top 10 richest people in the world currently",
         height=100,
         key="query_main"
     )
+    submit_clicked = st.button("Submit", type="primary", use_container_width=True, disabled=not query.strip())
 
-    if st.button("Submit", type="primary", use_container_width=True, disabled=not (file_paths and query.strip())):
+    # Handle button logic
+    query_to_use = query
+    if weather_clicked:
+        query_to_use = "What is the weather at London?"
+    elif richest_clicked:
+        query_to_use = "Give me list of Top 10 richest people in the world currently"
+    elif ai_news_clicked:
+        query_to_use = "What are the latest advancements in AI?"
+
+    if submit_clicked or weather_clicked or richest_clicked or ai_news_clicked:
         with st.spinner("Processing..."):
             try:
                 response = app.invoke({
-                    "files_uploaded": file_paths,
-                    "query": query,
+                    "files_uploaded": file_paths,  # file_paths will be [] if no files
+                    "query": query_to_use,
                     "data_ingested": False,
                     "answer": "",
                     "messages": [],  # Restore or add message history support
@@ -92,8 +112,6 @@ with col1:
                     graph_bytes = graph_obj.draw_mermaid_png()
                 except AttributeError:
                     # Fallback: try draw_mermaid() and convert to image if needed
-                    import io
-                    from PIL import Image as PILImage
                     mermaid_code = graph_obj.draw_mermaid()
                     # Optionally, use a library to convert mermaid to PNG if available
                     graph_bytes = None  # Placeholder if conversion is not implemented
@@ -139,4 +157,4 @@ with col2:
 
 # Footer
 st.markdown("---")
-st.markdown("*Powered by LangGraph and Streamlit*") 
+st.markdown("*Powered by LangGraph and Streamlit*")

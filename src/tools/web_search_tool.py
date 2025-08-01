@@ -1,9 +1,10 @@
 from langchain_tavily import TavilySearch
 from langchain_core.tools import tool
+from src.graphs.type import RAGAgentState
 
 # Initialize Tavily Search Tool
 @tool
-def tavily_search_tool():
+def tavily_search_tool(query: str) -> str:
     """
     Performs web search using Tavily Search API.
     
@@ -14,5 +15,5 @@ def tavily_search_tool():
     print("[TOOL] tavily_search_tool called")
     return TavilySearch(
         max_results=3,
-        topic="general",
+        topic=query,
     )

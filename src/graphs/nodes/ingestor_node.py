@@ -8,6 +8,7 @@ def ingestor_node(state: RAGAgentState) -> RAGAgentState:
     """
     A node that can ingest user files into the vector DB (if needed) and then generate a response to the user query using the vectorDB context.
     """
+    print(f"[INGESTION NODE] Starting with state : {state}")
     print("[INGESTION NODE] Running ingestor_node")
 
     # Ingest data if files are uploaded and not yet ingested
@@ -30,4 +31,5 @@ def ingestor_node(state: RAGAgentState) -> RAGAgentState:
         elif state.get('data_ingested', False):
             print("[INGESTION NODE] Data already ingested, skipping ingestion.")
 
+    print(f"[INGESTION NODE] Ending with state : {state}") 
     return state

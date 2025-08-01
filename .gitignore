@@ -210,3 +210,5 @@ __marimo__/
 # From current
 
 vectorDB/
+myvenv
+.vscode
