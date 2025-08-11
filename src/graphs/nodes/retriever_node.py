@@ -8,11 +8,11 @@ def retriever_node(state: RAGAgentState) -> RAGAgentState:
     """
     A node that creates a retriever to get data from the vectorDB
     """
-    print(f"[retriever_node] Starting with state : {state}")
+    print(f"[RETRIEVER NODE] Starting with state : {state}")
     result = ""
     new_messages = ""
     try:
-        print("[retriever_node] Running retriever_node")
+        print("[RETRIEVER NODE] Running retriever_node")
         db = IngestData().load_chroma_collection("devuser")
         result = Retriever().run_retriever_node(state["query"], db, 5)
         # Prepare new messages to append
@@ -22,12 +22,10 @@ def retriever_node(state: RAGAgentState) -> RAGAgentState:
         ]
 
     except Exception as e:
-        print(f"[retriever_node] Error occurred during retrieval: {str(e)}")
+        print(f"[RETRIEVER NODE] Error occurred during retrieval: {str(e)}")
         state['status'] = "Error"
 
-    print(f"[retriever_node] Ending with state : {state}")
-    return {
-            **state,
-            "messages": state["messages"] + new_messages,
-            "answer": result
-    }
+    state["messages"] = state["messages"] + new_messages
+    state["answer"] = result
+    print(f"[RETRIEVER NODE] Ending with state : {state}")
+    return state
