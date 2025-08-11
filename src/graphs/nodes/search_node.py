@@ -21,6 +21,8 @@ def search_agent_node(state: RAGAgentState) -> RAGAgentState:
     """
     # Ensure messages is initialized at the start
     messages = state.get("messages") or []
+    result = None  # Ensure result is always defined
+    output = []    # Ensure output is always defined
     try:
         print(f"[SearchNode] Starting with state : {state}")
         # No longer initializing or checking state['messages']
@@ -56,7 +58,7 @@ def search_agent_node(state: RAGAgentState) -> RAGAgentState:
                     messages = [
                         HumanMessage(content=state["query"])
                     ]
-                output = []
+                # output = []  # Already initialized above
 
                 # #test react agent
                 # print("[SearchNode] Invoking react agent")
@@ -85,20 +87,21 @@ def search_agent_node(state: RAGAgentState) -> RAGAgentState:
                         llm_with_tools = llm.bind_tools(tools)
                         print("[SearchNode] LLM bound with tools")
                         response = llm_with_tools.invoke(state["query"])
-                        output.append(AIMessage(content=str(response.content)))
+                        result = {'output': str(response.content)}  # Ensure result is set
+                        output.append(AIMessage(content=result['output']))
 
             except Exception as e:
                 if any(keyword in str(e).lower() for keyword in ['permission_denied', 'invalid api key', 'authentication']):
                     print(f"[SearchNode] Auth/API error: {e}")
                     continue
                 else:
-                    raise e
-                
+                    print(f"[SearchNode] Exception: {e}")
+                    break  # Stop trying other keys if it's a non-auth error
     except Exception as e:
         print(f"[SearchNode] Error occurred during retrieval: {str(e)}")
         state['status'] = "Error"
-
+    # Always log and return, even in error cases
     state["messages"] = messages + output
-    state["answer"] = output.content
+    state["answer"] = result.get('output') if result and isinstance(result, dict) else None
     print(f"[SearchNode] Ending with state : {state}")
     return state
