@@ -8,9 +8,22 @@ import json
 
 from langchain import hub
 # from langchain.agents import load_tools
-from langchain_community.agent_toolkits.load_tools import load_tools
+# from langchain_community.agent_toolkits.load_tools import load_tools
 
-tools = load_tools(["ddg-search"])
+from langchain_tavily import TavilySearch
+
+from dotenv import load_dotenv
+load_dotenv()
+
+tavily_search_tool = TavilySearch(
+    tavily_api_key=os.getenv("TAVILY_API_KEY"),
+    max_results=5,
+    topic="general",
+)
+
+# tools = load_tools(["ddg-search"])
+tools = [tavily_search_tool]
+
 prompt = hub.pull("hwchase17/react")
 
 # tools = [get_weather, search_web]
