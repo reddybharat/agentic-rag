@@ -59,17 +59,19 @@ def _build_base_graph():
 
     builder.add_edge("ingestor", "retriever")
     # builder.add_conditional_edges("generator", tools_condition)
-    builder.add_conditional_edges(
-        "search", 
-        should_continue,
-        {
-            "re": "search", 
-            "fin": "rewrite", 
-        },
-    )
+    # builder.add_conditional_edges(
+    #     "search", 
+    #     should_continue,
+    #     {
+    #         "re": "search", 
+    #         "fin": "rewrite", 
+    #     },
+    # )
     # builder.add_edge("search", END)
-    builder.add_edge("retriever", "rewrite")
+
+    # Remove conditional edge; add normal edge from 'search' to 'rewrite'
     builder.add_edge("search", "rewrite")
+    builder.add_edge("retriever", "rewrite")
     builder.add_edge("rewrite", END)
 
     return builder
