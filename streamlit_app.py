@@ -104,7 +104,7 @@ with col1:
                 st.session_state['file_paths'] = file_paths
                 
                 st.subheader("Response")
-                st.write(response.get("answer", "No response generated"))
+                st.markdown(response.get("answer", "No response generated"))
 
                 # Save the graph image for later display in col2
                 try:
