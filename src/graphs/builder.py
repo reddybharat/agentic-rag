@@ -3,6 +3,7 @@ from src.graphs.type import RAGAgentState
 from src.graphs.nodes.ingestor_node import ingestor_node
 from src.graphs.nodes.retriever_node import retriever_node
 from src.graphs.nodes.search_node import search_agent_node
+from src.graphs.nodes.rewrite_node import rewrite
 # from src.graphs.nodes.agent_node import agent_node
 
 from langgraph.prebuilt import ToolNode, tools_condition
@@ -39,6 +40,7 @@ def _build_base_graph():
     # builder.add_node("agent", agent_node)
     builder.add_node("retriever", retriever_node)
     builder.add_node("search", search_agent_node)
+    builder.add_node("rewrite", rewrite)
 
     # builder.add_node("tools", ToolNode(tools))
 
@@ -57,16 +59,20 @@ def _build_base_graph():
 
     builder.add_edge("ingestor", "retriever")
     # builder.add_conditional_edges("generator", tools_condition)
-    builder.add_conditional_edges(
-        "search", 
-        should_continue,
-        {
-            "re": "search", 
-            "fin": END, 
-        },
-    )
+    # builder.add_conditional_edges(
+    #     "search", 
+    #     should_continue,
+    #     {
+    #         "re": "search", 
+    #         "fin": "rewrite", 
+    #     },
+    # )
     # builder.add_edge("search", END)
-    builder.add_edge("retriever", END)
+
+    # Remove conditional edge; add normal edge from 'search' to 'rewrite'
+    builder.add_edge("search", "rewrite")
+    builder.add_edge("retriever", "rewrite")
+    builder.add_edge("rewrite", END)
 
     return builder
 

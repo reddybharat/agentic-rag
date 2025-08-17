@@ -1,4 +1,4 @@
-from src.prompts.rag_prompt import rag_prompt
+from src.helpers.prompts import rag_prompt
 import google.generativeai as genai
 from google.genai import types
 import os

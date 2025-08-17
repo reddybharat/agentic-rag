@@ -13,3 +13,5 @@ Pillow
 #testing tools
 langchain-community
 ddgs
+
+fastapi
