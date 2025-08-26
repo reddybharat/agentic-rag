@@ -14,7 +14,7 @@ checkpointer = MemorySaver()
 
 
 # --- Start a new session ---
-@router.post("/graph/start")
+@router.post("/start")
 async def start_graph(request: Request):
     body = await request.json()
     thread_id = str(uuid4())
@@ -22,7 +22,7 @@ async def start_graph(request: Request):
         "files_uploaded": body.get("files_uploaded", []),
         "query": body.get("query", ""),
         "answer": "",
-        "data_ingested": True,
+        "data_ingested": False,
         "status": "",
         "messages": body.get("messages", []),
         "web_search": body.get("web_search", False),
@@ -35,13 +35,12 @@ async def start_graph(request: Request):
     return {"thread_id": thread_id, "state": result}
 
 # --- Continue the session (user sends a new message) ---
-@router.post("/graph/continue")
+@router.post("/continue")
 async def continue_graph(request: Request):
     body = await request.json()
     thread_id = body["thread_id"]
     state = body["state"]
     print(f"[API] Continuing chat session with thread_id: {thread_id}")
-    print(f"[API DEBUG] Received state: {state}")
     
     # Ensure all required state variables are present
     if "finish" not in state:
@@ -61,14 +60,6 @@ async def continue_graph(request: Request):
     if "files_uploaded" not in state:
         state["files_uploaded"] = []
     
-    print(f"[API DEBUG] Messages count before resume: {len(state.get('messages', []))}")
-    
-    # print(f"[API DEBUG] Final state before graph invoke:")
-    # print(f"  - finish: {state.get('finish')}")
-    # print(f"  - web_search: {state.get('web_search')}")
-    # print(f"  - query: {state.get('query')}")
-    # print(f"  - status: {state.get('status')}")
-    
     graph = build_graph(checkpointer)
     result = graph.invoke(
         Command(resume={
@@ -84,7 +75,7 @@ async def continue_graph(request: Request):
     return {"thread_id": thread_id, "state": result}
 
 # --- Finish the session (user wants to end chat) ---
-@router.post("/graph/finish")
+@router.post("/finish")
 async def finish_graph(request: Request):
     body = await request.json()
     thread_id = body["thread_id"]

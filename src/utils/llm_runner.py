@@ -44,7 +44,6 @@ class LLM():
                 return content.replace("```json", "").replace("```", "").strip()
             except Exception as e:
                 if self.is_authentication_error(e):
-                    print(e)
                     continue
                 else:
                     raise e

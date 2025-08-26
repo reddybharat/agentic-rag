@@ -45,27 +45,5 @@ def rewrite(state: RAGAgentState) -> RAGAgentState:
         print(f"[REWRITE NODE] Error: {str(e)}")
         state['status'] = "Rewrite Error"
     
-    # Debug print statements for state[messages] at the end
-    messages = state.get("messages", [])
-    print(f"[REWRITE NODE DEBUG] Final messages count: {len(messages)}")
-    print(f"[REWRITE NODE DEBUG] Final state[messages]: {messages}")
-    
-    # Print each message with its index for better debugging
-    for i, msg in enumerate(messages):
-        if hasattr(msg, 'content'):
-            # LangChain message object
-            role = getattr(msg, 'type', None) or msg.__class__.__name__
-            content = msg.content[:100] + "..." if len(msg.content) > 100 else msg.content
-        elif isinstance(msg, dict):
-            # Dictionary format
-            role = msg.get('type', msg.get('role', 'unknown'))
-            content = msg.get('content', str(msg))
-            content = content[:100] + "..." if len(content) > 100 else content
-        else:
-            # Fallback
-            role = 'unknown'
-            content = str(msg)[:100] + "..." if len(str(msg)) > 100 else str(msg)
-        
-        print(f"[REWRITE NODE DEBUG] Message {i}: {role} - {content}")
-    
+    print(f"[REWRITE NODE] State after rewrite: {state}")
     return state

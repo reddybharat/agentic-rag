@@ -354,7 +354,6 @@ if reset_clicked:
 # Handle Finish Chat button
 elif finish_clicked:
     if st.session_state.get('thread_id'):
-        print(f"[STREAMLIT DEBUG] Finish button clicked! Thread ID: {st.session_state['thread_id']}")
         # Serialize messages to ensure they are JSON serializable
         serialized_messages = serialize_messages(st.session_state['messages'])
         
@@ -372,7 +371,6 @@ elif finish_clicked:
                 "status": st.session_state['status']
             }
         }
-        print(f"[STREAMLIT DEBUG] Sending finish payload: {payload}")
         try:
             resp = requests.post(f"{API_BASE}/finish", json=payload)
             if resp.status_code == 200:
@@ -429,7 +427,6 @@ elif (submit_clicked or weather_clicked or richest_clicked or ai_news_clicked):
                             "status": st.session_state['status']
                         }
                     }
-                    print(f"[STREAMLIT DEBUG] Sending submit payload: {payload}")
                     resp = requests.post(f"{API_BASE}/continue", json=payload)
                     if resp.status_code == 200:
                         data = resp.json()

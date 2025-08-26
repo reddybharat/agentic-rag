@@ -1,6 +1,8 @@
 import os
 import google.generativeai as genai
 from chromadb import Documents, EmbeddingFunction, Embeddings
+from dotenv import load_dotenv
+load_dotenv()
 
 class GeminiEmbeddingFunction(EmbeddingFunction):
     """
@@ -20,20 +22,34 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         gemini_api_keys = [k.strip() for k in api_keys_str.split(",") if k.strip()]
 
         if not gemini_api_keys:
-            raise ValueError("Gemini API Key not provided. Please provide GEMINI_API_KEY as an environment variable")
+            error_msg = "Gemini API Key not provided. Please provide GOOGLE_GENAI_API_KEYS as an environment variable"
+            raise ValueError(error_msg)
         
-        for key in gemini_api_keys:
+        for i, key in enumerate(gemini_api_keys):
             try:
                 genai.configure(api_key=key)
                 model = "models/embedding-001"
                 title = "Custom query"
-                return genai.embed_content(model=model,
-                                        content=input,
-                                        task_type="retrieval_document",
-                                        title=title)["embedding"]
+                
+                embeddings = genai.embed_content(
+                    model=model,
+                    content=input,
+                    task_type="retrieval_document",
+                    title=title
+                )["embedding"]
+                
+                return embeddings
+                
             except Exception as e:
-                if any(keyword in str(e).lower() for keyword in ['permission_denied', 'invalid api key', 'authentication']):
-                    print(e)
+                error_msg = str(e).lower()
+                if any(keyword in error_msg for keyword in ['permission_denied', 'invalid api key', 'authentication']):
+                    if i == len(gemini_api_keys) - 1:  # Last key
+                        error_msg = "All API keys failed authentication"
+                        raise ValueError(error_msg)
                     continue
                 else:
                     raise e
+        
+        # This should never be reached, but just in case
+        error_msg = "All API keys failed"
+        raise ValueError(error_msg)
