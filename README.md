@@ -2,18 +2,16 @@
 
 ![Agentic RAG Flow](graph.png)
 
-## About & Features
+## About
 
-This is a graph-based RAG system for querying your PDFs or the web, with LLM-powered reasoning and a Streamlit UI.
+This is a graph-based RAG system for querying your PDFs or the web, with LLM-powered reasoning and a Streamlit UI. The system leverages LangGraph to create intelligent agents with tools that can process queries through a sophisticated workflow.
 
-**Key Features:**
-- **Graph-Based Agent Architecture**: Powered by LangGraph for intelligent query processing
-- **PDF Document Processing**: Upload and query PDF files with context-aware responses
-- **Web Search Integration**: Real-time web search capabilities using Tavily API
-- **Conversation Memory**: Maintains context across multiple interactions
-- **Modern UI**: Beautiful Streamlit interface with gradient styling
-- **Smart Routing**: Automatically routes queries to the best processing method
-- **Chat Management**: Start, continue, and finish chat sessions with thread management
+**LangGraph & Agent Architecture:**
+- **LangGraph Framework**: Built on LangGraph for creating stateful, multi-step workflows with intelligent routing
+- **Agent with Tools**: Implements a multi-agent system where different nodes handle specific tasks (ingestion, retrieval, search, rewriting)
+- **Tool Integration**: Agents can use various tools including web search, document processing, and vector database operations
+- **State Management**: Maintains conversation state and context across multiple interactions
+- **Intelligent Routing**: Automatically routes queries to the appropriate processing nodes based on content and requirements
 
 ---
 
