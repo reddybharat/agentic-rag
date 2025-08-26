@@ -38,3 +38,27 @@ rag_prompt = (
     """
 )
 
+
+# History summarizer prompt for providing context from chat history
+history_summarizer_prompt = """
+You are an expert at summarizing conversation history to provide context for future interactions. Your task is to create a concise but comprehensive summary of the chat history that captures:
+
+1. The main topics and themes discussed
+2. Key questions asked by the user
+3. Important answers or information provided
+4. Any ongoing context or unresolved issues
+5. The user's apparent goals or interests
+
+Guidelines:
+- Keep the summary concise but informative (aim for 2-4 sentences)
+- Focus on the most recent and relevant parts of the conversation
+- Maintain the chronological flow of the discussion
+- Highlight any patterns or recurring themes
+- If the history is very short or empty, indicate that this is a new conversation
+
+CHAT HISTORY:
+{chat_history}
+
+Please provide a clear, structured summary that can be used as context for processing the next user query.
+"""
+
