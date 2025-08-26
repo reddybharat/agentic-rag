@@ -15,3 +15,5 @@ langchain-community
 ddgs
 
 fastapi
+requests
+uvicorn
