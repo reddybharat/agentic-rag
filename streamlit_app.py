@@ -1,12 +1,10 @@
 import streamlit as st
-import requests
 import os
 from src.helpers.summarizer import serialize_messages
+from src.helpers.graph_operations import start_new_chat, continue_chat, finish_chat
 from dotenv import load_dotenv
 
 load_dotenv()
-
-API_BASE = os.getenv("API_URL", "http://localhost:8000/graph")
 
 st.set_page_config(
     page_title="Agentic RAG System",
@@ -179,34 +177,24 @@ if 'query_counter' not in st.session_state:
     st.session_state['query_counter'] = 0
 
 # --- Reset chat button ---
-def start_new_chat(initial_query, web_search, messages, file_paths):
+def start_new_chat_wrapper(initial_query, web_search, messages, file_paths):
     # Serialize messages to ensure they are JSON serializable
     serialized_messages = serialize_messages(messages)
     
-    payload = {
-        "query": initial_query,
-        "web_search": web_search,
-        "messages": serialized_messages,
-        "files_uploaded": file_paths,
-    }
     try:
-        resp = requests.post(f"{API_BASE}/start", json=payload)
-        if resp.status_code == 200:
-            data = resp.json()
-            st.session_state['thread_id'] = data['thread_id']
-            state = data['state']
-            # Messages from API are already in the correct format, no need to serialize again
-            st.session_state['messages'] = state.get('messages', [])
-            st.session_state['latest_result'] = state.get('answer', None)
-            st.session_state['data_ingested'] = state.get('data_ingested', False)
-            st.session_state['file_paths'] = file_paths
-            st.session_state['status'] = state.get('status', 'Waiting for input')
-            # Clear the query input by incrementing counter
-            st.session_state['query_counter'] += 1
-            # Rerun to immediately show the updated conversation
-            st.rerun()
-        else:
-            st.session_state['thread_id'] = None
+        data = start_new_chat(initial_query, web_search, serialized_messages, file_paths)
+        st.session_state['thread_id'] = data['thread_id']
+        state = data['state']
+        # Messages from API are already in the correct format, no need to serialize again
+        st.session_state['messages'] = state.get('messages', [])
+        st.session_state['latest_result'] = state.get('answer', None)
+        st.session_state['data_ingested'] = state.get('data_ingested', False)
+        st.session_state['file_paths'] = file_paths
+        st.session_state['status'] = state.get('status', 'Waiting for input')
+        # Clear the query input by incrementing counter
+        st.session_state['query_counter'] += 1
+        # Rerun to immediately show the updated conversation
+        st.rerun()
     except Exception as e:
         st.session_state['thread_id'] = None
         st.error(f"Error starting new chat: {e}")
@@ -352,34 +340,13 @@ if reset_clicked:
 # Handle Finish Chat button
 elif finish_clicked:
     if st.session_state.get('thread_id'):
-        # Serialize messages to ensure they are JSON serializable
-        serialized_messages = serialize_messages(st.session_state['messages'])
-        
-        payload = {
-            "thread_id": st.session_state['thread_id'],
-            "state": {
-                "files_uploaded": file_paths,
-                "query": "",
-                "data_ingested": st.session_state['data_ingested'],
-                "answer": "",
-                "messages": serialized_messages,
-                "web_search": web_search,
-                "rewrite": False,
-                "finish": True,
-                "status": st.session_state['status']
-            }
-        }
         try:
-            resp = requests.post(f"{API_BASE}/finish", json=payload)
-            if resp.status_code == 200:
-                data = resp.json()
-                st.session_state['status'] = 'Chat finished.'
-                st.session_state['latest_result'] = None
-                st.success(f"Chat finished successfully! Thread ID: {data.get('thread_id', 'N/A')}")
-                # Clear the query input by incrementing counter
-                st.session_state['query_counter'] += 1
-            else:
-                st.error(f"API Error: {resp.text}")
+            data = finish_chat(st.session_state['thread_id'])
+            st.session_state['status'] = 'Chat finished.'
+            st.session_state['latest_result'] = None
+            st.success(f"Chat finished successfully! Thread ID: {data.get('thread_id', 'N/A')}")
+            # Clear the query input by incrementing counter
+            st.session_state['query_counter'] += 1
         except Exception as e:
             st.error(f"Error finishing chat: {e}")
     else:
@@ -402,7 +369,7 @@ elif (submit_clicked or weather_clicked or richest_clicked or ai_news_clicked):
             # Start a new chat with the initial query
             # Store the message as a serialized dict instead of HumanMessage object
             st.session_state['messages'] = [{"type": "human", "content": query_to_use}]
-            start_new_chat(query_to_use, web_search, st.session_state['messages'], file_paths)
+            start_new_chat_wrapper(query_to_use, web_search, st.session_state['messages'], file_paths)
         else:
             # Continue the chat - send the query without pre-adding the message
             st.session_state['is_processing'] = True
@@ -411,38 +378,27 @@ elif (submit_clicked or weather_clicked or richest_clicked or ai_news_clicked):
                     # Serialize messages to ensure they are JSON serializable
                     serialized_messages = serialize_messages(st.session_state['messages'])
                     
-                    payload = {
-                        "thread_id": st.session_state['thread_id'],
-                        "state": {
-                            "files_uploaded": file_paths,
-                            "query": query_to_use,
-                            "data_ingested": st.session_state['data_ingested'],
-                            "answer": "",
-                            "messages": serialized_messages,  # Send serialized messages
-                            "web_search": web_search,
-                            "rewrite": False,
-                            "finish": False,
-                            "status": st.session_state['status']
-                        }
-                    }
-                    resp = requests.post(f"{API_BASE}/continue", json=payload)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        state = data['state']
-                        # Update messages from the API response
-                        st.session_state['messages'] = state.get('messages', [])
-                        st.session_state['latest_result'] = state.get('answer', None)
-                        st.session_state['data_ingested'] = state.get("data_ingested", False)
-                        st.session_state['file_paths'] = file_paths
-                        st.session_state['status'] = state.get('status', st.session_state['status'])
-                        st.session_state['is_processing'] = False
-                        # Clear the query input by incrementing counter
-                        st.session_state['query_counter'] += 1
-                        # Rerun to immediately show the updated conversation
-                        st.rerun()
-                    else:
-                        st.error(f"API Error: {resp.text}")
-                        st.session_state['is_processing'] = False
+                    data = continue_chat(
+                        st.session_state['thread_id'],
+                        query_to_use,
+                        web_search,
+                        serialized_messages,
+                        file_paths,
+                        st.session_state['data_ingested'],
+                        st.session_state['status']
+                    )
+                    state = data['state']
+                    # Update messages from the API response
+                    st.session_state['messages'] = state.get('messages', [])
+                    st.session_state['latest_result'] = state.get('answer', None)
+                    st.session_state['data_ingested'] = state.get("data_ingested", False)
+                    st.session_state['file_paths'] = file_paths
+                    st.session_state['status'] = state.get('status', st.session_state['status'])
+                    st.session_state['is_processing'] = False
+                    # Clear the query input by incrementing counter
+                    st.session_state['query_counter'] += 1
+                    # Rerun to immediately show the updated conversation
+                    st.rerun()
                 except Exception as e:
                     st.session_state['data_ingested'] = False
                     st.session_state['status'] = 'Error'

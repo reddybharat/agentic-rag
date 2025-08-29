@@ -56,7 +56,8 @@ agentic-rag/
 │   ├── graphs/           # Graph builder and node logic
 │   ├── utils/            # Data ingestion, embeddings, LLM runner, logger
 │   ├── tools/            # Web search/crawl tools
-│   ├── helpers/          # Prompt templates
+│   ├── helpers/          # Helper functions and prompt templates
+│   │   └── graph_operations.py  # Direct graph operation functions
 │   ├── prompts/          # Prompt files
 │   ├── data/             # VectorDB storage
 │   ├── models.py, schemas.py
@@ -72,9 +73,17 @@ agentic-rag/
   - `GOOGLE_GENAI_API_KEYS`: Comma-separated Gemini API keys
   - `TAVILY_API_KEY`: Tavily web search API key
 
-## API Endpoints
+## Architecture
 
-The system includes a FastAPI backend with the following endpoints:
+The system can be run in two modes:
+
+### Streamlit-Only Mode (Recommended for Hosting)
+- **Direct Function Calls**: The Streamlit app now uses direct function calls instead of API requests
+- **No API Server Required**: All graph operations are handled directly through helper functions
+- **Easier Deployment**: Can be hosted on platforms like Streamlit Cloud without needing a separate API server
+
+### API Mode (Optional)
+The system also includes a FastAPI backend with the following endpoints:
 - `POST /graph/start` - Start a new conversation thread
 - `POST /graph/continue` - Continue an existing conversation
 - `POST /graph/finish` - Finish a conversation session
