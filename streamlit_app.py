@@ -1,8 +1,6 @@
 import streamlit as st
 import requests
 import os
-from PIL import Image
-from src.utils.logger import logger
 from src.helpers.summarizer import serialize_messages
 from dotenv import load_dotenv
 

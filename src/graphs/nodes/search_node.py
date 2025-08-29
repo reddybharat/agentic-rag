@@ -1,9 +1,8 @@
 from src.graphs.type import RAGAgentState
-from src.tools.web_search_tool import tavily_search_tool
 from src.helpers.history_summarizer import summarize_chat_history
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import AgentExecutor, create_tool_calling_agent, create_react_agent
+from langchain.agents import AgentExecutor, create_react_agent
 import os
 import json
 

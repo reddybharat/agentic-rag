@@ -1,8 +1,5 @@
-from src.helpers.prompts import rag_prompt
 import google.generativeai as genai
-from google.genai import types
 import os
-from src.utils.logger import logger
 
 class Retriever:
     def __init__(self) -> None:

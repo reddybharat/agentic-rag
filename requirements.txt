@@ -8,11 +8,8 @@ chromadb
 langchain_tavily
 langchain_google_genai
 streamlit
-Pillow
 
 #testing tools
-langchain-community
-ddgs
 
 fastapi
 requests
