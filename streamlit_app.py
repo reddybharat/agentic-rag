@@ -309,24 +309,40 @@ query = st.text_area(
     key=query_key,
     disabled=st.session_state['is_processing']
 )
-# Create a row with all three buttons
-col1, col2, col3 = st.columns(3)
+# Create a row with buttons - only show Finish button if there are messages
+if st.session_state['messages']:
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        submit_clicked = st.button("🚀 Submit Question", type="primary", use_container_width=True, disabled=not query.strip() or st.session_state['is_processing'])
+    with col2:
+        finish_clicked = st.button("✅ Finish & Reset", type="secondary", use_container_width=True, disabled=st.session_state['is_processing'])
+    reset_clicked = False
+else:
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        submit_clicked = st.button("🚀 Submit Question", type="primary", use_container_width=True, disabled=not query.strip() or st.session_state['is_processing'])
+    with col2:
+        # Empty column to maintain layout
+        st.empty()
+    finish_clicked = False
+    reset_clicked = False
 
-with col1:
-    submit_clicked = st.button("🚀 Submit Question", type="primary", use_container_width=True, disabled=not query.strip() or st.session_state['is_processing'])
-
-with col2:
-    finish_clicked = st.button("✅ Finish Chat", type="secondary", use_container_width=True, disabled=st.session_state['is_processing'])
-
-with col3:
-    reset_clicked = st.button("🔄 Reset Chat", type="secondary", use_container_width=True, disabled=st.session_state['is_processing'])
 
 
 
 
-
-# Handle Reset Chat button first (highest priority)
-if reset_clicked:
+# Handle Finish & Reset button
+if finish_clicked:
+    if st.session_state.get('thread_id'):
+        try:
+            # First finish the chat
+            data = finish_chat(st.session_state['thread_id'])
+            st.session_state['status'] = 'Chat finished.'
+            st.success(f"Chat finished successfully! Thread ID: {data.get('thread_id', 'N/A')}")
+        except Exception as e:
+            st.error(f"Error finishing chat: {e}")
+    
+    # Then reset the chat state
     st.session_state['messages'] = []
     st.session_state['data_ingested'] = False
     st.session_state['file_paths'] = []
@@ -336,21 +352,6 @@ if reset_clicked:
     st.session_state['thread_id'] = None
     st.session_state['query_counter'] += 1
     st.rerun()
-
-# Handle Finish Chat button
-elif finish_clicked:
-    if st.session_state.get('thread_id'):
-        try:
-            data = finish_chat(st.session_state['thread_id'])
-            st.session_state['status'] = 'Chat finished.'
-            st.session_state['latest_result'] = None
-            st.success(f"Chat finished successfully! Thread ID: {data.get('thread_id', 'N/A')}")
-            # Clear the query input by incrementing counter
-            st.session_state['query_counter'] += 1
-        except Exception as e:
-            st.error(f"Error finishing chat: {e}")
-    else:
-        st.warning("No active chat session to finish. Please start a conversation first.")
 
 # Handle Submit/Quick Query buttons
 elif (submit_clicked or weather_clicked or richest_clicked or ai_news_clicked):

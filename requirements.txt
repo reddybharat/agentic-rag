@@ -14,3 +14,6 @@ streamlit
 fastapi
 requests
 uvicorn
+
+
+pysqlite3-binary
