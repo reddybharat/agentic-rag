@@ -32,14 +32,12 @@ def search_agent_node(state: RAGAgentState) -> RAGAgentState:
     """
     A node that utilizes provided tools along with the functionalities provided by the LLM to get the appropriate answer to the user query
     """
-    messages = state.get("messages") or []
     result = None
-    output = []
     try:
         print("[SEARCH NODE] 🚀 Node hit")
 
         # Summarize chat history for context
-        history_summary = summarize_chat_history(messages)
+        history_summary = summarize_chat_history(state.get("messages", []))
         print(f"[SEARCH NODE] History summary: {history_summary}")
         
         # Enhance query with history context
@@ -69,23 +67,16 @@ def search_agent_node(state: RAGAgentState) -> RAGAgentState:
                 )
                 agent_executor = AgentExecutor(agent=agent, tools=tools, handle_parsing_errors=True)
 
-                if not messages:
-                    messages = [
-                        HumanMessage(content=state["query"])
-                    ]
-
                 import concurrent.futures
                 TIMEOUT_SECONDS = 10
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(agent_executor.invoke, {"input": enhanced_query})
                     try:
                         result = future.result(timeout=TIMEOUT_SECONDS)
-                        output.append(AIMessage(content=result.get('output')))
                     except concurrent.futures.TimeoutError:
                         llm_with_tools = llm.bind_tools(tools)
                         response = llm_with_tools.invoke(enhanced_query)
                         result = {'output': str(response.content)}
-                        output.append(AIMessage(content=result['output']))
 
             except Exception as e:
                 if any(keyword in str(e).lower() for keyword in ['permission_denied', 'invalid api key', 'authentication']):
@@ -98,18 +89,12 @@ def search_agent_node(state: RAGAgentState) -> RAGAgentState:
         print(f"[SEARCH NODE] Error: {str(e)}")
         state['status'] = "Error"
     
-    # Add the user query as a HumanMessage if it's not already in messages
-    if state["query"] and state["query"].strip():
-        # Check if this query is already in the messages
-        query_exists = any(
-            (isinstance(msg, HumanMessage) and msg.content == state["query"]) or
-            (isinstance(msg, dict) and msg.get('content') == state["query"])
-            for msg in messages
-        )
-        
-        if not query_exists:
-            messages.append(HumanMessage(content=state["query"]))
+    # Prepare new messages to append
+    new_messages = [
+        HumanMessage(content=state["query"]),
+        AIMessage(content=result.get('output') if result and isinstance(result, dict) else "Sorry, I couldn't process your request.")
+    ]
     
-    state["messages"] = messages + output
+    state["messages"] = state["messages"] + new_messages
     state["answer"] = result.get('output') if result and isinstance(result, dict) else None
     return state

@@ -368,8 +368,7 @@ elif (submit_clicked or weather_clicked or richest_clicked or ai_news_clicked):
     if query_to_use or weather_clicked or richest_clicked or ai_news_clicked:
         if st.session_state.get('thread_id') is None:
             # Start a new chat with the initial query
-            # Store the message as a serialized dict instead of HumanMessage object
-            st.session_state['messages'] = [{"type": "human", "content": query_to_use}]
+            # Let the graph nodes handle message management
             start_new_chat_wrapper(query_to_use, web_search, st.session_state['messages'], file_paths)
         else:
             # Continue the chat - send the query without pre-adding the message
