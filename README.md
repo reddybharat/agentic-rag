@@ -1,6 +1,18 @@
 # Agentic Retrieval-Augmented Generation
 
-![Agentic RAG Flow](graph.png)
+🌐 **Live Demo**: [https://rag-reddybharat.streamlit.app/](https://rag-reddybharat.streamlit.app/)
+
+![RAG Flow](graph.png)
+
+## Node Descriptions
+
+The system consists of several specialized nodes that work together:
+
+- **Ingestor Node**: Processes uploaded PDF documents, extracts text, and stores embeddings in the vector database (ChromaDB)
+- **Retriever Node**: Searches the vector database for relevant document chunks based on user query
+- **Search Node**: Agent node which performs web searches using provided tools (eg. Tavily, DuckDuckGo etc) for real-time information when needed
+- **Rewrite Node**: Refines and improves responses using LLM reasoning and context from other nodes
+- **Chat Node**: Manages conversation flow (simply, continue chat or finish)
 
 ## About
 
@@ -17,7 +29,7 @@ This is a graph-based RAG system for querying your PDFs or the web, with LLM-pow
 
 ## Tech Stack & Tools
 
-Python, LangGraph, LangChain, Gemini, Tavily Search, ChromaDB, Streamlit
+Python, LangGraph, LangChain, Gemini LLM, Tavily Search, ChromaDB, Streamlit
 
 ---
 
@@ -54,21 +66,17 @@ pip install -r requirements.txt
 
 ```
 agentic-rag/
-├── app.py                # (Entry point for API, if used)
+├── app.py                # FastAPI entry point
 ├── streamlit_app.py      # Main Streamlit UI
-├── graph.png             # Example graph visualization
 ├── requirements.txt      # Python dependencies
 ├── src/
-│   ├── graphs/           # Graph builder and node logic
-│   ├── utils/            # Data ingestion, embeddings, LLM runner, logger
-│   ├── tools/            # Web search/crawl tools
-│   ├── helpers/          # Helper functions and prompt templates
-│   │   └── graph_operations.py  # Direct graph operation functions
-│   ├── prompts/          # Prompt files
+│   ├── graphs/           # Graph builder and node implementations
+│   │   └── nodes/        # Individual node logic
+│   ├── utils/            # Core utilities
+│   ├── tools/            # External tool integrations
+│   ├── helpers/          # Helper functions and templates
 │   ├── data/             # VectorDB storage
-│   ├── models.py, schemas.py
-│   └── routers/          # (API routers, if extended)
-└── test_graph.py         # Test script for the graph
+│   └── routers/          # API endpoints
 ```
 
 ---
@@ -85,16 +93,8 @@ agentic-rag/
 ### Vector Database
 - **ChromaDB Cloud**: Uses Chroma Cloud for vector storage and retrieval
 
-## Architecture
 
-The system can be run in two modes:
-
-### Streamlit-Only Mode (Recommended for Hosting)
-- **Direct Function Calls**: The Streamlit app now uses direct function calls instead of API requests
-- **No API Server Required**: All graph operations are handled directly through helper functions
-- **Easier Deployment**: Can be hosted on platforms like Streamlit Cloud without needing a separate API server
-
-### API Mode (Optional)
+### APIs (Not implemented)
 The system also includes a FastAPI backend with the following endpoints:
 - `POST /graph/start` - Start a new conversation thread
 - `POST /graph/continue` - Continue an existing conversation
