@@ -111,9 +111,7 @@ class IngestData:
         if not chunks and text:
             chunks = [text]
         
-        print(f"[DEBUG] Split text into {len(chunks)} chunks")
-        for i, chunk in enumerate(chunks):
-            print(f"[DEBUG] Chunk {i}: {len(chunk)} chars - '{chunk[:50]}...'")
+
         
         return chunks
 
@@ -130,27 +128,18 @@ class IngestData:
         - Tuple[chromadb.Collection, str]: A tuple containing the created Chroma Collection and its name.
         """
         try:
-            print(f"[DEBUG] Creating Chroma collection '{name}' with {len(documents)} documents")
             chroma_client = self._get_chroma_client()
-            print(f"[DEBUG] Chroma client created: {type(chroma_client)}")
             
             # Remove the collection if it already exists
             try:
-                print(f"[DEBUG] Attempting to delete existing collection '{name}'")
                 chroma_client.delete_collection(name)
-                print(f"[DEBUG] Collection '{name}' deleted successfully")
             except Exception as e:
-                print(f"[DEBUG] Collection '{name}' didn't exist or couldn't be deleted: {str(e)}")
                 pass  # Ignore if it doesn't exist
             
-            print(f"[DEBUG] Creating new collection '{name}'")
             db = chroma_client.create_collection(name=name, embedding_function=GeminiEmbeddingFunction())
-            print(f"[DEBUG] Collection '{name}' created successfully")
 
-            print(f"[DEBUG] Adding {len(documents)} documents to collection")
             for i, d in enumerate(documents):
                 try:
-                    print(f"[DEBUG] Adding document {i}: '{d[:100] if d else 'EMPTY'}...'")
                     # Add metadata for better organization
                     metadata = {
                         "chunk_index": i,
@@ -160,17 +149,13 @@ class IngestData:
                         "timestamp": str(datetime.now())
                     }
                     db.add(documents=d, ids=str(i), metadatas=metadata)
-                    print(f"[DEBUG] Document {i} added successfully with metadata")
                 except Exception as e:
-                    print(f"[DEBUG] Failed to add document {i}: {str(e)}")
                     # Continue with other documents even if one fails
                     continue
 
-            print(f"[DEBUG] Collection '{name}' setup complete")
             return db, name
             
         except Exception as e:
-            print(f"[DEBUG] Error in create_chroma_db: {str(e)}")
             raise
     
     def run_ingestion_pipeline(self, file_paths: List[str]):
@@ -186,20 +171,16 @@ class IngestData:
         
         for i, file in enumerate(file_paths):
             try:
-                print(f"[DEBUG] Processing file {i+1}/{len(file_paths)}: {file}")
-                
                 # Load PDF content
                 text = self.load_pdf(file)
                 
                 if not text or not text.strip():
-                    print(f"[DEBUG] No content found in {file}")
                     continue
                 
                 # Split text into chunks
                 chunked_text = self.split_text(text)
                 
                 if not chunked_text:
-                    print(f"[DEBUG] No chunks created from {file}")
                     continue
                 
                 # Add file information to chunks
@@ -214,10 +195,8 @@ class IngestData:
                 
                 total_chunks += len(chunked_text)
                 any_content = True
-                print(f"[DEBUG] Added {len(chunked_text)} chunks from {file}")
                 
             except Exception as e:
-                print(f"[DEBUG] Error processing {file}: {str(e)}")
                 continue
         
         if not any_content:
@@ -226,7 +205,6 @@ class IngestData:
         
         # Create ChromaDB collection with all chunks
         if all_chunks:
-            print(f"[DEBUG] Creating collection with {len(all_chunks)} total chunks")
             self.create_chroma_db([chunk['text'] for chunk in all_chunks], "agentic-rag")
         
         return total_chunks

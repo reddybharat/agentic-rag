@@ -9,36 +9,23 @@ class Retriever:
 
     def get_relevant_passage(self, query, db, n_results):
         # Retrieve relevant passages from the DB
-        print(f"[DEBUG] Querying database with: '{query}'")
-        print(f"[DEBUG] Database object type: {type(db)}")
-        print(f"[DEBUG] Database object: {db}")
-        
         try:
             result = db.query(query_texts=[query], n_results=n_results)
-            print(f"[DEBUG] Query result: {result}")
             
             documents = result.get('documents', [])
-            print(f"[DEBUG] Documents found: {len(documents) if documents else 0}")
             
             if not documents or not documents[0]:
-                print("[DEBUG] No documents found in result")
                 return ""
                 
             passage = documents[0]
-            print(f"[DEBUG] First document type: {type(passage)}")
-            print(f"[DEBUG] First document length: {len(passage) if isinstance(passage, list) else len(str(passage))}")
             
             # Ensure passage is a string
             if isinstance(passage, list):
                 passage = '\n'.join(str(p) for p in passage)
-                print(f"[DEBUG] Converted list to string, length: {len(passage)}")
             
-            print(f"[DEBUG] Final passage preview: {passage[:200] if passage else 'EMPTY'}...")
             return passage
             
         except Exception as e:
-            print(f"[DEBUG] Error during query: {str(e)}")
-            print(f"[DEBUG] Error type: {type(e)}")
             raise
 
     def generate_answer(self, context):
