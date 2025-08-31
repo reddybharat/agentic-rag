@@ -200,13 +200,18 @@ def start_new_chat_wrapper(initial_query, web_search, messages, file_paths):
         st.error(f"Error starting new chat: {e}")
 
 # --- Main Input Area ---
-# Only show input configuration if no conversation has started yet
+# Initialize web search state
+if 'web_search' not in st.session_state:
+    st.session_state['web_search'] = False
+
+# Show toggle button at top only if no conversation has started yet
 if not st.session_state['messages']:
     st.markdown("### 📝 Input Configuration")
     web_search = st.toggle(
         "🔍 Enable Web Search",
         value=st.session_state.get('web_search', False),
-        help="Toggle to allow the agent to search the web for real-time information"
+        help="Toggle to allow the agent to search the web for real-time information",
+        key="web_search_toggle_initial"
     )
     st.session_state['web_search'] = web_search
 else:
@@ -233,22 +238,28 @@ if web_search:
         weather_clicked = richest_clicked = ai_news_clicked = False
     uploaded_files = None
 else:
-    st.markdown("**📄 Document Upload:**")
-    uploaded_files = st.file_uploader(
-        "Upload PDF files (multiple allowed):",
-        type=["pdf"],
-        accept_multiple_files=True,
-        key="file_uploader_main",
-        help="Select one or more PDF files to analyze"
-    )
+    # Only show document upload if no conversation has started yet
+    if not st.session_state['messages']:
+        st.markdown("**📄 Document Upload:**")
+        uploaded_files = st.file_uploader(
+            "Upload PDF files (multiple allowed):",
+            type=["pdf"],
+            accept_multiple_files=True,
+            key="file_uploader_main",
+            help="Select one or more PDF files to analyze"
+        )
+        if uploaded_files:
+            st.success(f"✅ Uploaded {len(uploaded_files)} file(s)")
+            for uploaded_file in uploaded_files:
+                file_path = os.path.join(temp_dir, uploaded_file.name)
+                with open(file_path, "wb") as f:
+                    shutil.copyfileobj(uploaded_file, f)
+                file_paths.append(file_path)
+    else:
+        uploaded_files = None
+        # Use existing file paths from session state
+        file_paths = st.session_state.get('file_paths', [])
     weather_clicked = richest_clicked = ai_news_clicked = False
-    if uploaded_files:
-        st.success(f"✅ Uploaded {len(uploaded_files)} file(s)")
-        for uploaded_file in uploaded_files:
-            file_path = os.path.join(temp_dir, uploaded_file.name)
-            with open(file_path, "wb") as f:
-                shutil.copyfileobj(uploaded_file, f)
-            file_paths.append(file_path)
 
 # --- Chat History Area (directly above query box) ---
 if st.session_state['messages']:
@@ -309,6 +320,17 @@ query = st.text_area(
     key=query_key,
     disabled=st.session_state['is_processing']
 )
+
+# Toggle button - only visible when conversation has started, positioned below query box and above submit button
+if st.session_state['messages']:
+    web_search_toggle = st.toggle(
+        "🔍 Enable Web Search",
+        value=st.session_state.get('web_search', False),
+        help="Toggle to allow the agent to search the web for real-time information",
+        key=f"web_search_toggle_{st.session_state.get('query_counter', 0)}"
+    )
+    st.session_state['web_search'] = web_search_toggle
+
 # Create a row with buttons - only show Finish button if there are messages
 if st.session_state['messages']:
     col1, col2 = st.columns([2, 1])
