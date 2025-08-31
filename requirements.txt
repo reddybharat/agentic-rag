@@ -5,6 +5,7 @@ pypdf
 google.generativeai
 google.genai
 chromadb
+chromadb-client
 langchain_tavily
 langchain_google_genai
 streamlit
@@ -14,3 +15,6 @@ streamlit
 fastapi
 requests
 uvicorn
+
+
+pysqlite3-binary

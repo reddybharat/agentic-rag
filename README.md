@@ -30,10 +30,16 @@ pip install -r requirements.txt
 
 1. **Set up environment variables**
    - Create a `.env` file in the project root with:
-     ```env
-     GOOGLE_GENAI_API_KEYS="your_gemini_api_key1,your_gemini_api_key2"
-     TAVILY_API_KEY="your_tavily_api_key"
-     ```
+           ```env
+      # ChromaDB Cloud Configuration (Required)
+      CHROMA_API_KEY="your_chroma_api_key_here"
+      CHROMA_TENANT="your_tenant_id_here"
+      CHROMA_DATABASE="your_database_name_here"
+      
+      # Existing API Keys
+      GOOGLE_GENAI_API_KEYS="your_gemini_api_key1,your_gemini_api_key2"
+      TAVILY_API_KEY="your_tavily_api_key"
+      ```
 2. **Run the Streamlit app**
    ```bash
    streamlit run streamlit_app.py
@@ -56,7 +62,8 @@ agentic-rag/
 │   ├── graphs/           # Graph builder and node logic
 │   ├── utils/            # Data ingestion, embeddings, LLM runner, logger
 │   ├── tools/            # Web search/crawl tools
-│   ├── helpers/          # Prompt templates
+│   ├── helpers/          # Helper functions and prompt templates
+│   │   └── graph_operations.py  # Direct graph operation functions
 │   ├── prompts/          # Prompt files
 │   ├── data/             # VectorDB storage
 │   ├── models.py, schemas.py
@@ -69,12 +76,26 @@ agentic-rag/
 ## Configuration
 
 - **Environment variables** (set in `.env`):
+  - `CHROMA_API_KEY`: ChromaDB Cloud API key (required)
+  - `CHROMA_TENANT`: ChromaDB Cloud tenant ID (required)
+  - `CHROMA_DATABASE`: ChromaDB Cloud database name (required)
   - `GOOGLE_GENAI_API_KEYS`: Comma-separated Gemini API keys
   - `TAVILY_API_KEY`: Tavily web search API key
 
-## API Endpoints
+### Vector Database
+- **ChromaDB Cloud**: Uses Chroma Cloud for vector storage and retrieval
 
-The system includes a FastAPI backend with the following endpoints:
+## Architecture
+
+The system can be run in two modes:
+
+### Streamlit-Only Mode (Recommended for Hosting)
+- **Direct Function Calls**: The Streamlit app now uses direct function calls instead of API requests
+- **No API Server Required**: All graph operations are handled directly through helper functions
+- **Easier Deployment**: Can be hosted on platforms like Streamlit Cloud without needing a separate API server
+
+### API Mode (Optional)
+The system also includes a FastAPI backend with the following endpoints:
 - `POST /graph/start` - Start a new conversation thread
 - `POST /graph/continue` - Continue an existing conversation
 - `POST /graph/finish` - Finish a conversation session

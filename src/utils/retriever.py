@@ -9,15 +9,24 @@ class Retriever:
 
     def get_relevant_passage(self, query, db, n_results):
         # Retrieve relevant passages from the DB
-        result = db.query(query_texts=[query], n_results=n_results)
-        documents = result.get('documents', [])
-        if not documents or not documents[0]:
-            return ""
-        passage = documents[0]
-        # Ensure passage is a string
-        if isinstance(passage, list):
-            passage = '\n'.join(str(p) for p in passage)
-        return passage
+        try:
+            result = db.query(query_texts=[query], n_results=n_results)
+            
+            documents = result.get('documents', [])
+            
+            if not documents or not documents[0]:
+                return ""
+                
+            passage = documents[0]
+            
+            # Ensure passage is a string
+            if isinstance(passage, list):
+                passage = '\n'.join(str(p) for p in passage)
+            
+            return passage
+            
+        except Exception as e:
+            raise
 
     def generate_answer(self, context):
         if not self.api_keys:

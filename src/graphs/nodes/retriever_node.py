@@ -23,10 +23,18 @@ def retriever_node(state: RAGAgentState) -> RAGAgentState:
             enhanced_query = f"Context from previous conversation: {history_summary}\n\nCurrent query: {state['query']}"
         
         try:
-            db = IngestData().load_chroma_collection("devuser")
+            print(f"[RETRIEVER NODE] Loading Chroma collection 'agentic-rag'...")
+            db = IngestData().load_chroma_collection("agentic-rag")
+            print(f"[RETRIEVER NODE] Collection loaded successfully: {type(db)}")
+            print(f"[RETRIEVER NODE] Collection object: {db}")
+            
+            print(f"[RETRIEVER NODE] Running retriever with query: '{enhanced_query}'")
             result = Retriever().run_retriever_node(enhanced_query, db, 5)
+            print(f"[RETRIEVER NODE] Retriever result: {result[:200] if result else 'EMPTY'}...")
+            
         except Exception as db_error:
             print(f"[RETRIEVER NODE] Database error: {str(db_error)}")
+            print(f"[RETRIEVER NODE] Error type: {type(db_error)}")
             result = "I couldn't find any relevant information in the uploaded documents. Please make sure documents have been uploaded and processed correctly."
         
         # Prepare new messages to append
