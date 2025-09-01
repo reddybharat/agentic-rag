@@ -2,7 +2,7 @@
 
 🌐 **Live Demo**: [https://rag-reddybharat.streamlit.app/](https://rag-reddybharat.streamlit.app/)
 
-![RAG Flow](graph.png)
+![RAG Flow](rag-graph.png)
 
 ## Node Descriptions
 

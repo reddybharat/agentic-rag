@@ -7,26 +7,16 @@ import os
 import json
 
 from langchain import hub
-# from langchain.agents import load_tools
-# from langchain_community.agent_toolkits.load_tools import load_tools
 
-from langchain_tavily import TavilySearch
+from src.tools.web_search_tool import tavily_search_tool, duckduckgo_search_tool, add_test
 
 from dotenv import load_dotenv
 load_dotenv()
 
-tavily_search_tool = TavilySearch(
-    tavily_api_key=os.getenv("TAVILY_API_KEY"),
-    max_results=5,
-    topic="general",
-)
+tools = [tavily_search_tool, duckduckgo_search_tool, add_test]
 
-# tools = load_tools(["ddg-search"])
-tools = [tavily_search_tool]
 
-prompt = hub.pull("hwchase17/react")
-
-# tools = [get_weather, search_web]
+search_agent_prompt = hub.pull("hwchase17/react")
 
 def search_agent_node(state: RAGAgentState) -> RAGAgentState:
     """
@@ -35,10 +25,8 @@ def search_agent_node(state: RAGAgentState) -> RAGAgentState:
     result = None
     try:
         print("[SEARCH NODE] 🚀 Node hit")
-
         # Summarize chat history for context
         history_summary = summarize_chat_history(state.get("messages", []))
-        print(f"[SEARCH NODE] History summary: {history_summary}")
         
         # Enhance query with history context
         enhanced_query = state["query"]
@@ -59,31 +47,34 @@ def search_agent_node(state: RAGAgentState) -> RAGAgentState:
         for i, key in enumerate(gemini_api_keys):
             try:
                 llm = ChatGoogleGenerativeAI(google_api_key=key, model="gemini-2.0-flash-lite")
-
                 agent = create_react_agent(
                     tools=tools,
                     llm=llm,
-                    prompt=prompt
+                    prompt=search_agent_prompt
                 )
                 agent_executor = AgentExecutor(agent=agent, tools=tools, handle_parsing_errors=True)
 
                 import concurrent.futures
-                TIMEOUT_SECONDS = 10
+                TIMEOUT_SECONDS = 30  # Increased timeout for debugging
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(agent_executor.invoke, {"input": enhanced_query})
                     try:
                         result = future.result(timeout=TIMEOUT_SECONDS)
+                        print(f"[SEARCH NODE] Agent result: {result}")
                     except concurrent.futures.TimeoutError:
+                        print("[SEARCH NODE] Agent timed out, falling back to direct LLM call")
                         llm_with_tools = llm.bind_tools(tools)
                         response = llm_with_tools.invoke(enhanced_query)
                         result = {'output': str(response.content)}
+                        print(f"[SEARCH NODE] Direct LLM result: {result}")
 
             except Exception as e:
+                print(f"[SEARCH NODE] Exception with key {i+1}: {e}")
                 if any(keyword in str(e).lower() for keyword in ['permission_denied', 'invalid api key', 'authentication']):
                     print(f"[SEARCH NODE] Auth/API error: {e}")
                     continue
                 else:
-                    print(f"[SEARCH NODE] Exception: {e}")
+                    print(f"[SEARCH NODE] Non-auth error: {e}")
                     break
     except Exception as e:
         print(f"[SEARCH NODE] Error: {str(e)}")
