@@ -8,12 +8,12 @@ import json
 
 from langchain import hub
 
-from src.tools.web_search_tool import tavily_search_tool, duckduckgo_search_tool, add_test
+from src.tools.web_search_tool import tavily_search_tool, duckduckgo_search_tool
 
 from dotenv import load_dotenv
 load_dotenv()
 
-tools = [tavily_search_tool, duckduckgo_search_tool, add_test]
+tools = [tavily_search_tool, duckduckgo_search_tool]
 
 
 search_agent_prompt = hub.pull("hwchase17/react")

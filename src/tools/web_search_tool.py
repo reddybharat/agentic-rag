@@ -61,32 +61,32 @@ def duckduckgo_search_tool(query: str):
         print(f"[TOOL] DuckDuckGo search error: {e}")
         return f"Error performing search: {str(e)}"
     
-@tool
-def add_test(input_str: str):
-    """
-    Adds two numbers together.
+# @tool
+# def add_test(input_str: str):
+#     """
+#     Adds two numbers together.
 
-    Args:
-        input_str (str): A string containing two numbers to add, e.g., "5 + 3" or "a: 5, b: 3"
+#     Args:
+#         input_str (str): A string containing two numbers to add, e.g., "5 + 3" or "a: 5, b: 3"
 
-    Returns:
-        str: The sum of the two numbers.
-    """
-    print(f"[TOOL] add_test called with input: {input_str}")
-    try:
-        # Parse the input string to extract numbers
-        # Handle different formats: "5 + 3", "a: 5, b: 3", "5, 3", etc.
-        import re
+#     Returns:
+#         str: The sum of the two numbers.
+#     """
+#     print(f"[TOOL] add_test called with input: {input_str}")
+#     try:
+#         # Parse the input string to extract numbers
+#         # Handle different formats: "5 + 3", "a: 5, b: 3", "5, 3", etc.
+#         import re
         
-        # Extract all numbers from the string
-        numbers = re.findall(r'\d+', input_str)
-        if len(numbers) >= 2:
-            a = int(numbers[0])
-            b = int(numbers[1])
-            result = a + b
-            return f"The sum of {a} + {b} is: {result}"
-        else:
-            return f"Error: Could not find two numbers in the input '{input_str}'. Please provide two numbers to add."
-    except Exception as e:
-        print(f"[TOOL] Addition error: {e}")
-        return f"Error performing addition: {str(e)}"
+#         # Extract all numbers from the string
+#         numbers = re.findall(r'\d+', input_str)
+#         if len(numbers) >= 2:
+#             a = int(numbers[0])
+#             b = int(numbers[1])
+#             result = a + b
+#             return f"The sum of {a} + {b} is: {result}"
+#         else:
+#             return f"Error: Could not find two numbers in the input '{input_str}'. Please provide two numbers to add."
+#     except Exception as e:
+#         print(f"[TOOL] Addition error: {e}")
+#         return f"Error performing addition: {str(e)}"
