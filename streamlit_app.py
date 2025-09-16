@@ -15,11 +15,15 @@ st.set_page_config(
 # Custom CSS for better styling
 st.markdown("""
 <style>
+    body, .stApp {
+        background-color: #18181B !important;
+        color: #E5E7EB !important;
+    }
     .main-header {
-        background: linear-gradient(90deg, #2c3e50 0%, #34495e 100%);
+        background: linear-gradient(135deg, #23272F 0%, #2D3140 100%) !important;
         padding: 2rem;
         border-radius: 10px;
-        color: white;
+        color: white !important;
         text-align: center;
         margin-bottom: 2rem;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
@@ -29,98 +33,73 @@ st.markdown("""
         border-radius: 12px;
         margin-bottom: 1.5rem;
         box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        border: 1px solid rgba(255,255,255,0.1);
+        border: 1px solid rgba(255,255,255,0.07);
+        color: #E5E7EB !important;
     }
     .user-message {
-        background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
-        color: white;
+        background: linear-gradient(135deg, #23272F 0%, #2D3140 100%) !important;
+        color: #E5E7EB !important;
         margin-left: 15%;
         margin-right: 5%;
-        border-left: 4px solid #3498db;
+        border-left: 4px solid #6366F1;
     }
     .bot-message {
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-        color: white;
+        background: linear-gradient(135deg, #23272F 0%, #3B3355 100%) !important;
+        color: #E5E7EB !important;
         margin-left: 5%;
         margin-right: 15%;
-        border-left: 4px solid #27ae60;
+        border-left: 4px solid #4B5563;
     }
     .status-card {
-        background: rgba(255,255,255,0.05);
-        padding: 1rem;
-        border-radius: 10px;
-        border-left: 4px solid #3498db;
-        margin-bottom: 1rem;
-        color: white;
+        background: #23272F !important;
+        color: #E5E7EB !important;
+        border-left: 4px solid #6366F1;
     }
-    .quick-query-btn {
-        background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
-        color: white;
-        border: 1px solid rgba(255,255,255,0.2);
-        border-radius: 8px;
-        padding: 0.5rem 1rem;
-        margin: 0.25rem;
-        transition: all 0.3s ease;
-    }
-    .quick-query-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-    }
-    .stButton > button {
-        background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
-        color: white;
-        border: 1px solid rgba(255,255,255,0.2);
+    .quick-query-btn, .stButton > button {
+        background: #23272F !important;
+        color: #E5E7EB !important;
+        border: 1px solid #23272F;
         border-radius: 8px;
         transition: all 0.3s ease;
     }
-    .stButton > button:hover {
-        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    .quick-query-btn:hover, .stButton > button:hover {
+        background: #18181B !important;
+        color: #A5B4FC !important;
     }
     .stTextArea > div > div > textarea {
-        background: rgba(255,255,255,0.05);
-        color: white;
-        border: 1px solid rgba(255,255,255,0.2);
+        background: #23272F !important;
+        color: #E5E7EB !important;
+        border: 1px solid #23272F;
         border-radius: 8px;
     }
     .stTextArea > div > div > textarea:focus {
-        border-color: #3498db;
-        box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        border-color: #6366F1;
+        box-shadow: 0 0 0 2px #6366F1;
     }
-    .stToggle > div > div {
-        background: rgba(255,255,255,0.1);
-        border-radius: 20px;
-    }
-    .stToggle > div > div > div {
-        background: #3498db;
+    .stSidebar {
+        background: #18181B !important;
     }
     .stExpander > div > div > div {
-        background: rgba(255,255,255,0.05);
-        color: white;
+        background: #23272F !important;
+        color: #E5E7EB !important;
     }
     .stMarkdown > div > div > div {
-        color: white;
+        color: #E5E7EB !important;
     }
-    .stInfo {
-        background: rgba(52, 152, 219, 0.1);
-        border: 1px solid rgba(52, 152, 219, 0.3);
-        color: white;
+    .stInfo, .stSuccess, .stWarning, .stError {
+        background: #23272F !important;
+        color: #E5E7EB !important;
+        border: 1px solid #23272F;
     }
-    .stSuccess {
-        background: rgba(39, 174, 96, 0.1);
-        border: 1px solid rgba(39, 174, 96, 0.3);
-        color: white;
-    }
-    .stWarning {
-        background: rgba(243, 156, 18, 0.1);
-        border: 1px solid rgba(243, 156, 18, 0.3);
-        color: white;
-    }
-    .stError {
-        background: rgba(231, 76, 60, 0.1);
-        border: 1px solid rgba(231, 76, 60, 0.3);
-        color: white;
+    .block-container {
+        max-width: 66vw !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        padding-left: 2rem !important;
+        padding-right: 2rem !important;
+        border: 1.5px solid rgba(255,255,255,0.10) !important;
+        border-radius: 16px !important;
+        box-sizing: border-box;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -129,7 +108,7 @@ st.markdown("""
 st.markdown("""
 <div class="main-header">
     <h1>🤖 Agentic RAG System</h1>
-    <p><strong>Powered by LangGraph</strong></p>
+    <p><strong>LangGraph under the hood</strong></p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -141,13 +120,13 @@ with st.expander("ℹ️ How it works", expanded=st.session_state['about_expande
     st.markdown("""
     **This system uses a graph-based agent architecture to process your queries and generate responses.**
 
-    ### 🚀 Features:
+    ### Features:
     - **Web Search Mode**: Enable to search the web for real-time information
     - **Document Processing**: Upload PDF files and ask questions about your documents
     - **Smart Routing**: The system automatically routes queries to the best processing method
     - **Conversation Memory**: Maintains context across multiple interactions
     
-    ### 📋 Quick Start:
+    ### Quick Start:
     1. **For Web Search**: Enable the toggle and use quick query buttons or type your own question
     2. **For Documents**: Upload PDF files and ask questions about the content
     3. **View Results**: See responses and understand how the agent processed your query
@@ -206,7 +185,7 @@ if 'web_search' not in st.session_state:
 
 # Show toggle button at top only if no conversation has started yet
 if not st.session_state['messages']:
-    st.markdown("### 📝 Input Configuration")
+    st.markdown("### Input Configuration")
     web_search = st.toggle(
         "🔍 Enable Web Search",
         value=st.session_state.get('web_search', False),
@@ -226,14 +205,14 @@ file_paths = []
 if web_search:
     # Only show quick queries if no conversation has started yet
     if not st.session_state['messages']:
-        st.markdown("**🚀 Quick Test Queries:**")
-        colA, colB, colC = st.columns(3)
+        st.markdown("**Quick Test Queries:**")
+        colA, colB, colC, col_spacer = st.columns([1, 1, 1, 1])
         with colA:
-            weather_clicked = st.button("🌤️ Weather in London", type="secondary", use_container_width=True)
+            weather_clicked = st.button("Weather in London", type="secondary", use_container_width=True)
         with colB:
-            richest_clicked = st.button("💰 Top 10 Richest People", type="secondary", use_container_width=True)
+            richest_clicked = st.button("Top 10 Richest People", type="secondary", use_container_width=True)
         with colC:
-            ai_news_clicked = st.button("🤖 Latest AI News", type="secondary", use_container_width=True)
+            ai_news_clicked = st.button("Latest AI News", type="secondary", use_container_width=True)
     else:
         weather_clicked = richest_clicked = ai_news_clicked = False
     uploaded_files = None
@@ -241,20 +220,22 @@ else:
     # Only show document upload if no conversation has started yet
     if not st.session_state['messages']:
         st.markdown("**📄 Document Upload:**")
-        uploaded_files = st.file_uploader(
-            "Upload PDF files (multiple allowed):",
-            type=["pdf"],
-            accept_multiple_files=True,
-            key="file_uploader_main",
-            help="Select one or more PDF files to analyze"
-        )
-        if uploaded_files:
-            st.success(f"✅ Uploaded {len(uploaded_files)} file(s)")
-            for uploaded_file in uploaded_files:
-                file_path = os.path.join(temp_dir, uploaded_file.name)
-                with open(file_path, "wb") as f:
-                    shutil.copyfileobj(uploaded_file, f)
-                file_paths.append(file_path)
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            uploaded_files = st.file_uploader(
+                "Upload PDF files (multiple allowed):",
+                type=["pdf"],
+                accept_multiple_files=True,
+                key="file_uploader_main",
+                help="Select one or more PDF files to analyze"
+            )
+            if uploaded_files:
+                st.success(f"✅ Uploaded {len(uploaded_files)} file(s)")
+                for uploaded_file in uploaded_files:
+                    file_path = os.path.join(temp_dir, uploaded_file.name)
+                    with open(file_path, "wb") as f:
+                        shutil.copyfileobj(uploaded_file, f)
+                    file_paths.append(file_path)
     else:
         uploaded_files = None
         # Use existing file paths from session state
@@ -313,6 +294,8 @@ else:
 # Use a unique key that changes when we want to clear the input
 query_key = f"query_main_{st.session_state.get('query_counter', 0)}"
 
+spinner_placeholder = st.empty()  # Reserve space above the text area
+
 query = st.text_area(
     "Enter your question here...",
     value="",
@@ -333,16 +316,16 @@ if st.session_state['messages']:
 
 # Create a row with buttons - only show Finish button if there are messages
 if st.session_state['messages']:
-    col1, col2 = st.columns([2, 1])
+    col1, col2, col_spacer = st.columns([1, 1, 3])
     with col1:
-        submit_clicked = st.button("🚀 Submit Question", type="primary", use_container_width=True, disabled=not query.strip() or st.session_state['is_processing'])
+        submit_clicked = st.button("Submit", type="primary", use_container_width=True, disabled=not query.strip() or st.session_state['is_processing'])
     with col2:
-        finish_clicked = st.button("✅ Finish & Reset", type="secondary", use_container_width=True, disabled=st.session_state['is_processing'])
+        finish_clicked = st.button("Finish & Reset", type="secondary", use_container_width=True, disabled=st.session_state['is_processing'])
     reset_clicked = False
 else:
-    col1, col2 = st.columns([2, 1])
+    col1, col2, col_spacer = st.columns([1, 1, 3])
     with col1:
-        submit_clicked = st.button("🚀 Submit Question", type="primary", use_container_width=True, disabled=not query.strip() or st.session_state['is_processing'])
+        submit_clicked = st.button("Submit", type="primary", use_container_width=True, disabled=not query.strip() or st.session_state['is_processing'])
     with col2:
         # Empty column to maintain layout
         st.empty()
@@ -391,15 +374,15 @@ elif (submit_clicked or weather_clicked or richest_clicked or ai_news_clicked):
         if st.session_state.get('thread_id') is None:
             # Start a new chat with the initial query
             # Let the graph nodes handle message management
-            start_new_chat_wrapper(query_to_use, web_search, st.session_state['messages'], file_paths)
+            with st.spinner("Thinking..."):
+                start_new_chat_wrapper(query_to_use, web_search, st.session_state['messages'], file_paths)
         else:
             # Continue the chat - send the query without pre-adding the message
             st.session_state['is_processing'] = True
-            with st.spinner("Processing..."):
+            with st.spinner("🧠 Thinking..."):
                 try:
                     # Serialize messages to ensure they are JSON serializable
                     serialized_messages = serialize_messages(st.session_state['messages'])
-                    
                     data = continue_chat(
                         st.session_state['thread_id'],
                         query_to_use,
