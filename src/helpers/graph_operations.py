@@ -37,7 +37,7 @@ def start_new_chat(query: str, web_search: bool, messages: List, file_paths: Lis
     
     print(f"[HELPER] Starting new chat session with thread_id: {thread_id}")
     graph = build_graph(checkpointer)
-    result = graph.stream(state, config={"configurable": {"thread_id": thread_id}})
+    result = graph.invoke(state, config={"configurable": {"thread_id": thread_id}})
     
     return {"thread_id": thread_id, "state": result}
 
@@ -73,7 +73,7 @@ def continue_chat(thread_id: str, query: str, web_search: bool, messages: List,
     }
     
     graph = build_graph(checkpointer)
-    result = graph.stream(
+    result = graph.invoke(
         Command(resume={
             "query": state.get('query'),
             "web_search": state.get('web_search'),
