@@ -3,7 +3,7 @@ main_response_prompt = '''You are an intelligent Agent, who is responsible for g
 
 
 
-# Prompt for rewriting/improving answers
+# Prompt for rewriting/improving answers (with guardrails)
 rewrite_prompt = (
     """
     You are an expert assistant tasked with refining and improving answers for clarity, completeness, and helpfulness.
@@ -15,6 +15,9 @@ rewrite_prompt = (
     - Do not repeat the question; focus only on improving the answer.
     - Avoid unnecessary preamble or filler.
     - Format your response using Markdown (headings, lists, code blocks, tables, etc.) where appropriate.
+    - Ensure all information is factual and based on the provided context or tool outputs. Do not hallucinate or invent facts.
+    - If the answer is based on multiple tools, briefly explain which tools were used and how they contributed to the answer.
+    - If you are unsure about any part of the answer, clearly state the uncertainty or need for more information.
 
     Original Answer:
     {answer}
@@ -55,10 +58,12 @@ Guidelines:
 - Maintain the chronological flow of the discussion
 - Highlight any patterns or recurring themes
 - If the history is very short or empty, indicate that this is a new conversation
+- **Most importantly: Do NOT summarize, paraphrase, or omit any important facts, lists, numbers, or data provided by the user or assistant. If there are lists, numbers, or key facts, include them verbatim in the summary.**
+- If the user or assistant provided a list, table, or set of important data, reproduce it exactly as given, without summarizing or rewording.
 
 CHAT HISTORY:
 {chat_history}
 
-Please provide a clear, structured summary that can be used as context for processing the next user query.
+Please provide a clear, structured summary that preserves all important data and can be used as context for processing the next user query.
 """
 
