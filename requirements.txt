@@ -16,5 +16,7 @@ fastapi
 requests
 uvicorn
 
-
 pysqlite3-binary
+
+duckduckgo-search
+langchain-community
