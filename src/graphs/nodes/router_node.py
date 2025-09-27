@@ -51,7 +51,7 @@ def router_agent_node(state: RAGAgentState) -> RAGAgentState:
                 llm=llm,
                 prompt=router_agent_prompt_template
             )
-            agent_executor = AgentExecutor(agent=agent, tools=tools, handle_parsing_errors=True, verbose=True)
+            agent_executor = AgentExecutor(agent=agent, tools=tools, handle_parsing_errors=True)
             import concurrent.futures
             TIMEOUT_SECONDS = 30  # Increased timeout for debugging
             with concurrent.futures.ThreadPoolExecutor() as executor:
