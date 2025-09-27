@@ -78,7 +78,6 @@ class IngestData:
         Returns:
         - List[str]: A list containing text chunks with minimum size.
         """
-        # Clean the text first
         text = re.sub(r'\s+', ' ', text).strip()
         
         # Split by sentences first (more natural boundaries)
@@ -90,7 +89,7 @@ class IngestData:
         min_chunk_size = 100  # Minimum characters per chunk
         max_chunk_size = 1000  # Maximum characters per chunk
         
-        for sentence in sentences:
+        for idx, sentence in enumerate(sentences):
             # If adding this sentence would exceed max size, save current chunk
             if current_chunk and len(current_chunk + " " + sentence) > max_chunk_size:
                 if len(current_chunk) >= min_chunk_size:
@@ -110,8 +109,6 @@ class IngestData:
         # If no chunks meet minimum size, create one chunk anyway
         if not chunks and text:
             chunks = [text]
-        
-
         
         return chunks
 
@@ -138,17 +135,16 @@ class IngestData:
             
             db = chroma_client.create_collection(name=name, embedding_function=GeminiEmbeddingFunction())
 
-            for i, d in enumerate(documents):
+            for idx, dict_data in enumerate(documents):
                 try:
                     # Add metadata for better organization
                     metadata = {
-                        "chunk_index": i,
-                        "total_chunks": len(documents),
-                        "chunk_size": len(d),
-                        "source": "pdf_upload",
+                        'filename': dict_data['filename'],
+                        "chunk_index": idx,
+                        "chunk_size": len(dict_data['text']),
                         "timestamp": str(datetime.now())
                     }
-                    db.add(documents=d, ids=str(i), metadatas=metadata)
+                    db.add(documents=dict_data['text'], ids=str(idx), metadatas=metadata)
                 except Exception as e:
                     # Continue with other documents even if one fails
                     continue
@@ -205,7 +201,7 @@ class IngestData:
         
         # Create ChromaDB collection with all chunks
         if all_chunks:
-            self.create_chroma_db([chunk['text'] for chunk in all_chunks], "agentic-rag")
+            self.create_chroma_db([{'text': chunk['text'], 'filename': chunk['file_name']} for chunk in all_chunks], "agentic-rag")
         
         return total_chunks
 
