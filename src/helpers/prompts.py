@@ -27,23 +27,6 @@ rewrite_prompt = (
 )
 
 
-# Improved RAG prompt for context-based answering
-rag_prompt = (
-    """
-    You are a highly knowledgeable and helpful assistant. Your task is to answer the user's question using only the information provided in the context passage below.
-    - Provide a clear, complete, and accurate answer.
-    - If the context is insufficient, state that more information is needed.
-    - Do not include any preamble or unnecessary filler.
-    - Respond in well-structured, professional language.
-    - If relevant, cite specific details from the passage.
-    - Format your response using Markdown (headings, lists, code blocks, tables, etc.) where appropriate.
-
-    QUESTION: {query}
-    CONTEXT PASSAGE: {relevant_passage}
-    """
-)
-
-
 # History summarizer prompt for providing context from chat history
 history_summarizer_prompt = """
 You are an expert at summarizing conversation history to provide context for future interactions. Your task is to create a concise but comprehensive summary of the chat history that captures:
