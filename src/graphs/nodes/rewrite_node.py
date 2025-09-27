@@ -12,8 +12,6 @@ def rewrite(state: RAGAgentState) -> RAGAgentState:
     # Ensure state variables are properly set
     if 'finish' not in state:
         state['finish'] = False
-    if 'web_search' not in state:
-        state['web_search'] = False
     answer = state.get("answer", "")
     try:
         if answer:

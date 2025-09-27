@@ -25,7 +25,6 @@ async def start_graph(request: Request):
         "data_ingested": False,
         "status": "",
         "messages": body.get("messages", []),
-        "web_search": body.get("web_search", False),
         "rewrite": False,
         "finish": False,
     }
@@ -45,8 +44,6 @@ async def continue_graph(request: Request):
     # Ensure all required state variables are present
     if "finish" not in state:
         state["finish"] = False
-    if "web_search" not in state:
-        state["web_search"] = False
     if "query" not in state:
         state["query"] = ""
     if "answer" not in state:
@@ -64,7 +61,6 @@ async def continue_graph(request: Request):
     result = graph.invoke(
         Command(resume={
             "query": state.get('query'),
-            "web_search": state.get('web_search'),
             "messages": state.get('messages', []),
             "status": state.get('status'),
             "data_ingested": state.get('data_ingested'),
