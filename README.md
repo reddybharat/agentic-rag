@@ -6,13 +6,12 @@
 
 ## Node Descriptions
 
-The system consists of several specialized nodes that work together:
+The system now follows a streamlined, agentic flow:
 
-- **Ingestor Node**: Processes uploaded PDF documents, extracts text, and stores embeddings in the vector database (ChromaDB)
-- **Retriever Node**: Searches the vector database for relevant document chunks based on user query
-- **Search Node**: Agent node which performs web searches using provided tools (eg. Tavily, DuckDuckGo etc) for real-time information when needed
-- **Rewrite Node**: Refines and improves responses using LLM reasoning and context from other nodes
-- **Chat Node**: Manages conversation flow (simply, continue chat or finish)
+- **Ingestor Node**: If the user uploads PDF files, this node processes the documents, extracts text, and stores embeddings in the vector database (ChromaDB). If no files are uploaded, this step is skipped.
+- **Router Agent Node**: The entry point for every user query. This is an agent node with access to both the vector database (for document retrieval) and web search tools (Tavily, DuckDuckGo, etc). It decides, for each query, how to combine document and web knowledge to generate the best possible answer.
+- **Rewrite Node**: Takes the answer from the router agent and rewrites it for clarity, completeness, and presentability using LLM reasoning and formatting.
+- **Chat Routing Node**: Determines whether the conversation should continue (awaiting further user input) or finish (ending the session).
 
 ## About
 
@@ -42,7 +41,7 @@ pip install -r requirements.txt
 
 1. **Set up environment variables**
    - Create a `.env` file in the project root with:
-           ```env
+      ```env
       # ChromaDB Cloud Configuration (Required)
       CHROMA_API_KEY="your_chroma_api_key_here"
       CHROMA_TENANT="your_tenant_id_here"
@@ -92,7 +91,6 @@ agentic-rag/
 
 ### Vector Database
 - **ChromaDB Cloud**: Uses Chroma Cloud for vector storage and retrieval
-
 
 ### APIs (Not implemented)
 The system also includes a FastAPI backend with the following endpoints:
