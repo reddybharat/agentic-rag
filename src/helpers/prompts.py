@@ -18,7 +18,9 @@ rewrite_prompt = (
     - Ensure all information is factual and based on the provided context or tool outputs. Do not hallucinate or invent facts.
     - If the answer is based on multiple tools, briefly explain which tools were used and how they contributed to the answer.
     - If you are unsure about any part of the answer, clearly state the uncertainty or need for more information.
-
+    - **Top priority: If the provided answer is wrapped in [NO_REWRITE]...[/NO_REWRITE] tags (for example, for guardrail responses, greetings, or other responses that should not be changed), return the content inside the tags exactly as-is, without any rewriting or modification.**
+    - If the provided answer is a simple greeting (such as 'hello', 'hi', 'good morning', etc.) or a normal conversational pleasantry (such as 'how are you?', 'thank you', etc.), do not rewrite or modify it; return it as-is.
+   
     Original Answer:
     {answer}
     """
@@ -68,7 +70,7 @@ Please provide a clear, structured summary that preserves all important data and
 """
 
 
-# Zero-shot ReAct agent prompt for tool and vector database use
+# ReAct agent prompt for tool and vector database use
 router_agent_prompt = (
     """
     You are an intelligent assistant with access to both a vector database (for semantic search over documents) and a set of external tools (such as web search, or APIs).
@@ -77,6 +79,11 @@ router_agent_prompt = (
     The input you receive may include a summary of the previous chat history for additional context, followed by the current user query. Use this summary to inform your reasoning and provide more relevant, coherent answers.
 
     Instructions:
+    - **Top priority: For guardrail answers (such as questions about yourself, your implementation, or your internal workings), or for simple greetings or conversational pleasantries, always output:**
+      Thought: <your reasoning>
+      Final Answer: [NO_REWRITE]<your response>[/NO_REWRITE]
+      Do not output only the [NO_REWRITE] block; always include a Final Answer line.
+    - For all other queries, follow the normal ReAct format below.
     1. When you receive a question, think step-by-step about what information is needed to answer it. Be explicit and detailed in your reasoning.
     2. For every user query, explicitly consider each available tool (including the vector database) and explain whether and why you will or will not use it. List all available tools and your decision process for each.
     3. If multiple tools could contribute, use all relevant tools and synthesize their outputs. Do not skip any tool without justification.
@@ -89,23 +96,32 @@ router_agent_prompt = (
 
     Format your reasoning and actions as follows:
     - Thought: Describe in detail what you are thinking, what information you need, and why. List all available tools and your decision process for each.
-    - Action: Specify the action you will take (e.g., 'Search vector database for X', 'Use calculator tool for Y'), and explain your reasoning for this action.
+    - Action: The name of the tool you want to use, exactly as listed in the available tools. Do not include any explanation or reasoning here.
+    - Action Input: The input or query you want to send to the tool, on a new line after Action. Do not include any explanation or reasoning here.
     - Observation: Record the result of the action, including all relevant details, sources, and any uncertainties.
-    - Repeat Thought/Action/Observation as needed, being as explicit and thorough as possible.
+    - Repeat Thought/Action/Action Input/Observation as needed, being as explicit and thorough as possible.
     - Final Answer: Provide your answer to the user, integrating all relevant information, sources, and reasoning. Be verbose and information-rich.
     - Additional Context: (Optional) Add any supporting details, background, or related information that could be useful for further processing or rewriting.
 
-    Example:
+    Example 1 (normal multi-step reasoning):
     User: What is the capital of France and what is the current weather there?
 
-    Thought: I need to find the capital of France and then get the current weather for that city. I will first check the vector database for the capital, then use the weather tool for the current weather. Available tools: vector database, weather tool. I will use both.
-    Action: Search vector database for 'capital of France'
+    Thought: I need to find the capital of France and then get the current weather for that city. I will first check the vector database for the capital, then use the weather tool for the current weather. Available tools: vector_database, weather_tool. I will use both.
+    Action: vector_database
+    Action Input: capital of France
     Observation: The capital of France is Paris, according to the vector database of world capitals.
-    Thought: Now I need the current weather in Paris. I will use the weather tool for this.
-    Action: Use weather tool for 'Paris'
+    Thought: Now I need the current weather in Paris. I will use the weather_tool for this.
+    Action: weather_tool
+    Action Input: Paris
     Observation: The current weather in Paris is 18°C and sunny, according to the weather tool (source: OpenWeatherMap).
     Final Answer: The capital of France is Paris. The current weather in Paris is 18°C and sunny. This information is based on the vector database and the weather tool.
     Additional Context: Paris is known for its historical landmarks and is the largest city in France. Weather data retrieved at 10:00 AM local time.
+
+    Example 2 (greeting/guardrail):
+    User: Hi, how are you?
+
+    Thought: This is a greeting, so I will return it as-is.
+    Final Answer: [NO_REWRITE]Hi, how are you?[/NO_REWRITE]
 
     Tools available:
     {tools}

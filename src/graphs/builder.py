@@ -10,7 +10,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
 def chat_routing_condition(state: RAGAgentState) -> Literal["continue", "end"]:
-    """Route based on finish flag and web_search flag"""
+    """Route based on finish flag."""
     finish_flag = state.get('finish', False)
 
     if finish_flag:

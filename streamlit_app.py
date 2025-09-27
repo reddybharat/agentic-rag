@@ -121,15 +121,13 @@ with st.expander("ℹ️ How it works", expanded=st.session_state['about_expande
     **This system uses a graph-based agent architecture to process your queries and generate responses.**
 
     ### Features:
-    - **Web Search Mode**: Enable to search the web for real-time information
     - **Document Processing**: Upload PDF files and ask questions about your documents
     - **Smart Routing**: The system automatically routes queries to the best processing method
     - **Conversation Memory**: Maintains context across multiple interactions
     
     ### Quick Start:
-    1. **For Web Search**: Enable the toggle and use quick query buttons or type your own question
-    2. **For Documents**: Upload PDF files and ask questions about the content
-    3. **View Results**: See responses and understand how the agent processed your query
+    1. **For Documents**: Upload PDF files and ask questions about the content
+    2. **View Results**: See responses and understand how the agent processed your query
     """)
 
 # --- Session State Initialization ---
@@ -154,12 +152,12 @@ if 'query_counter' not in st.session_state:
     st.session_state['query_counter'] = 0
 
 # --- Reset chat button ---
-def start_new_chat_wrapper(initial_query, web_search, messages, file_paths):
+def start_new_chat_wrapper(initial_query, messages, file_paths):
     # Serialize messages to ensure they are JSON serializable
     serialized_messages = serialize_messages(messages)
     
     try:
-        data = start_new_chat(initial_query, web_search, serialized_messages, file_paths)
+        data = start_new_chat(initial_query, serialized_messages, file_paths)
         st.session_state['thread_id'] = data['thread_id']
         state = data['state']
         # Messages from API are already in the correct format, no need to serialize again
@@ -315,8 +313,8 @@ elif submit_clicked:
     query_to_use = query.strip()
     if query_to_use:
         if st.session_state.get('thread_id') is None:
-            with st.spinner("Thinking..."):
-                start_new_chat_wrapper(query_to_use, False, st.session_state['messages'], file_paths)
+            with st.spinner("🧠 Thinking..."):
+                start_new_chat_wrapper(query_to_use, st.session_state['messages'], file_paths)
         else:
             st.session_state['is_processing'] = True
             with st.spinner("🧠 Thinking..."):
@@ -325,7 +323,6 @@ elif submit_clicked:
                     data = continue_chat(
                         st.session_state['thread_id'],
                         query_to_use,
-                        False,
                         serialized_messages,
                         file_paths,
                         st.session_state['data_ingested'],
