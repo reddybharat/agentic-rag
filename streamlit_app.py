@@ -118,16 +118,20 @@ if 'about_expanded' not in st.session_state:
 
 with st.expander("ℹ️ How it works", expanded=st.session_state['about_expanded']):
     st.markdown("""
-    **This system uses a graph-based agent architecture to process your queries and generate responses.**
+    **This system uses an autonomous, graph-based agent architecture to process your queries and generate responses.**
+
+    The agent intelligently decides which tools to use to provide the best possible answer to your question, all without manual intervention.
 
     ### Features:
     - **Document Processing**: Upload PDF files and ask questions about your documents
-    - **Smart Routing**: The system automatically routes queries to the best processing method
+    - **Smart Tool Selection**: The agent autonomously chooses the best tools for each query
     - **Conversation Memory**: Maintains context across multiple interactions
     
-    ### Quick Start:
-    1. **For Documents**: Upload PDF files and ask questions about the content
-    2. **View Results**: See responses and understand how the agent processed your query
+    ### How it works:
+    - **Ingestor Node**: Processes uploaded PDF files, extracts text, and stores embeddings in the vector database.
+    - **Router Agent Node**: Entry point for user queries. Decides how to combine document and web knowledge using available tools.
+    - **Rewrite Node**: Refines answers for clarity and presentability using LLM reasoning.
+    - **Chat Routing Node**: Determines whether to continue or finish the conversation.
     """)
 
 # --- Session State Initialization ---

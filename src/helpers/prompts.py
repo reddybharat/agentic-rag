@@ -29,27 +29,22 @@ rewrite_prompt = (
 
 # History summarizer prompt for providing context from chat history
 history_summarizer_prompt = """
-You are an expert at summarizing conversation history to provide context for future interactions. Your task is to create a concise but comprehensive summary of the chat history that captures:
+You are an expert at extracting and preserving the most important context from a conversation history for use in future interactions. Your job is NOT to simply summarize or shorten the chat, but to intelligently select and retain all information that could be useful for ongoing reasoning, answering follow-up questions, or understanding the user's goals.
 
-1. The main topics and themes discussed
-2. Key questions asked by the user
-3. Important answers or information provided
-4. Any ongoing context or unresolved issues
-5. The user's apparent goals or interests
+Your output should:
+- Preserve all key facts, lists, numbers, and data exactly as given (do not paraphrase or omit important details).
+- Retain any actionable context, instructions, or unresolved issues.
+- Include the main topics, user goals, and any background information that could help with future queries.
+- Omit greetings, pleasantries, and guardrail responses (such as 'Hi', 'Hello', 'How are you?', 'As an AI...', etc.).
+- Be concise, but never at the expense of losing important context or data.
+- If the history is very short or empty, indicate that this is a new conversation.
 
-Guidelines:
-- Keep the summary concise but informative (aim for 2-4 sentences)
-- Focus on the most recent and relevant parts of the conversation
-- Maintain the chronological flow of the discussion
-- Highlight any patterns or recurring themes
-- If the history is very short or empty, indicate that this is a new conversation
-- **Most importantly: Do NOT summarize, paraphrase, or omit any important facts, lists, numbers, or data provided by the user or assistant. If there are lists, numbers, or key facts, include them verbatim in the summary.**
-- If the user or assistant provided a list, table, or set of important data, reproduce it exactly as given, without summarizing or rewording.
+You are a context preserver, not a basic summarizer. Err on the side of keeping more useful information rather than less.
 
 CHAT HISTORY:
 {chat_history}
 
-Please provide a clear, structured summary that preserves all important data and can be used as context for processing the next user query.
+Please provide a clear, structured context extract that preserves all important data and can be used as context for processing the next user query.
 """
 
 
