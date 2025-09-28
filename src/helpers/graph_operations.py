@@ -9,13 +9,12 @@ from src.helpers.summarizer import serialize_messages
 # Global checkpointer for all sessions (same as in the API)
 checkpointer = MemorySaver()
 
-def start_new_chat(query: str, web_search: bool, messages: List, file_paths: List[str]) -> Dict:
+def start_new_chat(query: str, messages: List, file_paths: List[str]) -> Dict:
     """
     Start a new chat session - equivalent to /start API endpoint
     
     Args:
         query: The initial query
-        web_search: Whether to enable web search
         messages: List of previous messages
         file_paths: List of uploaded file paths
     
@@ -30,7 +29,6 @@ def start_new_chat(query: str, web_search: bool, messages: List, file_paths: Lis
         "data_ingested": False,
         "status": "",
         "messages": messages,
-        "web_search": web_search,
         "rewrite": False,
         "finish": False,
     }
@@ -41,7 +39,7 @@ def start_new_chat(query: str, web_search: bool, messages: List, file_paths: Lis
     
     return {"thread_id": thread_id, "state": result}
 
-def continue_chat(thread_id: str, query: str, web_search: bool, messages: List, 
+def continue_chat(thread_id: str, query: str, messages: List, 
                   file_paths: List[str], data_ingested: bool, status: str) -> Dict:
     """
     Continue an existing chat session - equivalent to /continue API endpoint
@@ -49,7 +47,6 @@ def continue_chat(thread_id: str, query: str, web_search: bool, messages: List,
     Args:
         thread_id: The thread ID to continue
         query: The new query
-        web_search: Whether web search is enabled
         messages: List of previous messages
         file_paths: List of uploaded file paths
         data_ingested: Whether data has been ingested
@@ -63,7 +60,6 @@ def continue_chat(thread_id: str, query: str, web_search: bool, messages: List,
     # Ensure all required state variables are present
     state = {
         "finish": False,
-        "web_search": web_search,
         "query": query,
         "answer": "",
         "messages": messages,
@@ -76,7 +72,6 @@ def continue_chat(thread_id: str, query: str, web_search: bool, messages: List,
     result = graph.invoke(
         Command(resume={
             "query": state.get('query'),
-            "web_search": state.get('web_search'),
             "messages": state.get('messages', []),
             "status": state.get('status'),
             "data_ingested": state.get('data_ingested'),

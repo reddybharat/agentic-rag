@@ -118,18 +118,20 @@ if 'about_expanded' not in st.session_state:
 
 with st.expander("ℹ️ How it works", expanded=st.session_state['about_expanded']):
     st.markdown("""
-    **This system uses a graph-based agent architecture to process your queries and generate responses.**
+    **This system uses an autonomous, graph-based agent architecture to process your queries and generate responses.**
+
+    The agent intelligently decides which tools to use to provide the best possible answer to your question, all without manual intervention.
 
     ### Features:
-    - **Web Search Mode**: Enable to search the web for real-time information
     - **Document Processing**: Upload PDF files and ask questions about your documents
-    - **Smart Routing**: The system automatically routes queries to the best processing method
+    - **Smart Tool Selection**: The agent autonomously chooses the best tools for each query
     - **Conversation Memory**: Maintains context across multiple interactions
     
-    ### Quick Start:
-    1. **For Web Search**: Enable the toggle and use quick query buttons or type your own question
-    2. **For Documents**: Upload PDF files and ask questions about the content
-    3. **View Results**: See responses and understand how the agent processed your query
+    ### How it works:
+    - **Ingestor Node**: Processes uploaded PDF files, extracts text, and stores embeddings in the vector database.
+    - **Router Agent Node**: Entry point for user queries. Decides how to combine document and web knowledge using available tools.
+    - **Rewrite Node**: Refines answers for clarity and presentability using LLM reasoning.
+    - **Chat Routing Node**: Determines whether to continue or finish the conversation.
     """)
 
 # --- Session State Initialization ---
@@ -149,19 +151,17 @@ if 'thread_id' not in st.session_state:
     st.session_state['thread_id'] = None
 if 'is_processing' not in st.session_state:
     st.session_state['is_processing'] = False
-if 'web_search' not in st.session_state:
-    st.session_state['web_search'] = False
 
 if 'query_counter' not in st.session_state:
     st.session_state['query_counter'] = 0
 
 # --- Reset chat button ---
-def start_new_chat_wrapper(initial_query, web_search, messages, file_paths):
+def start_new_chat_wrapper(initial_query, messages, file_paths):
     # Serialize messages to ensure they are JSON serializable
     serialized_messages = serialize_messages(messages)
     
     try:
-        data = start_new_chat(initial_query, web_search, serialized_messages, file_paths)
+        data = start_new_chat(initial_query, serialized_messages, file_paths)
         st.session_state['thread_id'] = data['thread_id']
         state = data['state']
         # Messages from API are already in the correct format, no need to serialize again
@@ -179,68 +179,37 @@ def start_new_chat_wrapper(initial_query, web_search, messages, file_paths):
         st.error(f"Error starting new chat: {e}")
 
 # --- Main Input Area ---
-# Initialize web search state
-if 'web_search' not in st.session_state:
-    st.session_state['web_search'] = False
-
-# Show toggle button at top only if no conversation has started yet
+# Only show file upload if no conversation has started yet
 if not st.session_state['messages']:
-    st.markdown("### Input Configuration")
-    web_search = st.toggle(
-        "🔍 Enable Web Search",
-        value=st.session_state.get('web_search', False),
-        help="Toggle to allow the agent to search the web for real-time information",
-        key="web_search_toggle_initial"
-    )
-    st.session_state['web_search'] = web_search
+    import tempfile
+    import shutil
+    temp_dir = tempfile.mkdtemp()
+    file_paths = []
+    st.markdown("**📄 Document Upload:**")
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        uploaded_files = st.file_uploader(
+            "Upload PDF files (multiple allowed):",
+            type=["pdf"],
+            accept_multiple_files=True,
+            key="file_uploader_main",
+            help="Select one or more PDF files to analyze"
+        )
+        if uploaded_files:
+            st.success(f"✅ Uploaded {len(uploaded_files)} file(s)")
+            for uploaded_file in uploaded_files:
+                file_path = os.path.join(temp_dir, uploaded_file.name)
+                with open(file_path, "wb") as f:
+                    shutil.copyfileobj(uploaded_file, f)
+                file_paths.append(file_path)
+            st.session_state['data_ingested'] = False
+            st.session_state['file_paths'] = file_paths
+        else:
+            st.session_state['data_ingested'] = True
+            st.session_state['file_paths'] = []
 else:
-    # Use the existing web_search state if conversation has started
-    web_search = st.session_state.get('web_search', False)
-
-import tempfile
-import shutil
-temp_dir = tempfile.mkdtemp()
-file_paths = []
-
-if web_search:
-    # Only show quick queries if no conversation has started yet
-    if not st.session_state['messages']:
-        st.markdown("**Quick Test Queries:**")
-        colA, colB, colC, col_spacer = st.columns([1, 1, 1, 1])
-        with colA:
-            weather_clicked = st.button("Weather in London", type="secondary", use_container_width=True)
-        with colB:
-            richest_clicked = st.button("Top 10 Richest People", type="secondary", use_container_width=True)
-        with colC:
-            ai_news_clicked = st.button("Latest AI News", type="secondary", use_container_width=True)
-    else:
-        weather_clicked = richest_clicked = ai_news_clicked = False
     uploaded_files = None
-else:
-    # Only show document upload if no conversation has started yet
-    if not st.session_state['messages']:
-        st.markdown("**📄 Document Upload:**")
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            uploaded_files = st.file_uploader(
-                "Upload PDF files (multiple allowed):",
-                type=["pdf"],
-                accept_multiple_files=True,
-                key="file_uploader_main",
-                help="Select one or more PDF files to analyze"
-            )
-            if uploaded_files:
-                st.success(f"✅ Uploaded {len(uploaded_files)} file(s)")
-                for uploaded_file in uploaded_files:
-                    file_path = os.path.join(temp_dir, uploaded_file.name)
-                    with open(file_path, "wb") as f:
-                        shutil.copyfileobj(uploaded_file, f)
-                    file_paths.append(file_path)
-    else:
-        uploaded_files = None
-        # Use existing file paths from session state
-        file_paths = st.session_state.get('file_paths', [])
-    weather_clicked = richest_clicked = ai_news_clicked = False
+    file_paths = st.session_state.get('file_paths', [])
 
 # --- Chat History Area (directly above query box) ---
 if st.session_state['messages']:
@@ -304,17 +273,7 @@ query = st.text_area(
     disabled=st.session_state['is_processing']
 )
 
-# Toggle button - only visible when conversation has started, positioned below query box and above submit button
-if st.session_state['messages']:
-    web_search_toggle = st.toggle(
-        "🔍 Enable Web Search",
-        value=st.session_state.get('web_search', False),
-        help="Toggle to allow the agent to search the web for real-time information",
-        key=f"web_search_toggle_{st.session_state.get('query_counter', 0)}"
-    )
-    st.session_state['web_search'] = web_search_toggle
-
-# Create a row with buttons - only show Finish button if there are messages
+# --- Chat/Submit/Finish Buttons ---
 if st.session_state['messages']:
     col1, col2, col_spacer = st.columns([1, 1, 3])
     with col1:
@@ -327,14 +286,9 @@ else:
     with col1:
         submit_clicked = st.button("Submit", type="primary", use_container_width=True, disabled=not query.strip() or st.session_state['is_processing'])
     with col2:
-        # Empty column to maintain layout
         st.empty()
     finish_clicked = False
     reset_clicked = False
-
-
-
-
 
 # Handle Finish & Reset button
 if finish_clicked:
@@ -358,51 +312,34 @@ if finish_clicked:
     st.session_state['query_counter'] += 1
     st.rerun()
 
-# Handle Submit/Quick Query buttons
-elif (submit_clicked or weather_clicked or richest_clicked or ai_news_clicked):
-    # Determine the query to use
+# Handle Submit button
+elif submit_clicked:
     query_to_use = query.strip()
-    if weather_clicked:
-        query_to_use = "What is the weather at London?"
-    elif richest_clicked:
-        query_to_use = "Give me list of Top 10 richest people in the world currently"
-    elif ai_news_clicked:
-        query_to_use = "What are the latest advancements in AI?"
-    
-    # Only proceed if there's a valid query (for submit button) or if it's a quick query
-    if query_to_use or weather_clicked or richest_clicked or ai_news_clicked:
+    if query_to_use:
         if st.session_state.get('thread_id') is None:
-            # Start a new chat with the initial query
-            # Let the graph nodes handle message management
-            with st.spinner("Thinking..."):
-                start_new_chat_wrapper(query_to_use, web_search, st.session_state['messages'], file_paths)
+            with st.spinner("🧠 Thinking..."):
+                start_new_chat_wrapper(query_to_use, st.session_state['messages'], file_paths)
         else:
-            # Continue the chat - send the query without pre-adding the message
             st.session_state['is_processing'] = True
             with st.spinner("🧠 Thinking..."):
                 try:
-                    # Serialize messages to ensure they are JSON serializable
                     serialized_messages = serialize_messages(st.session_state['messages'])
                     data = continue_chat(
                         st.session_state['thread_id'],
                         query_to_use,
-                        web_search,
                         serialized_messages,
                         file_paths,
                         st.session_state['data_ingested'],
                         st.session_state['status']
                     )
                     state = data['state']
-                    # Update messages from the API response
                     st.session_state['messages'] = state.get('messages', [])
                     st.session_state['latest_result'] = state.get('answer', None)
                     st.session_state['data_ingested'] = state.get("data_ingested", False)
                     st.session_state['file_paths'] = file_paths
                     st.session_state['status'] = state.get('status', st.session_state['status'])
                     st.session_state['is_processing'] = False
-                    # Clear the query input by incrementing counter
                     st.session_state['query_counter'] += 1
-                    # Rerun to immediately show the updated conversation
                     st.rerun()
                 except Exception as e:
                     st.session_state['data_ingested'] = False

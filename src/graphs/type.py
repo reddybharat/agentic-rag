@@ -1,4 +1,4 @@
-from typing import Dict, TypedDict, List, Literal, Annotated, Sequence, Union
+from typing import TypedDict, List, Annotated, Sequence, Union
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -11,7 +11,6 @@ class RAGAgentState(TypedDict):
     answer: str
     data_ingested: bool
     status: str
-    messages: Annotated[Sequence[Union[BaseMessage, Dict]], add_messages]
-    web_search: bool
+    messages: Annotated[Sequence[Union[BaseMessage, dict]], add_messages]
     rewrite: bool
     finish: bool
