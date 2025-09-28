@@ -15,14 +15,12 @@ The system now follows a streamlined, agentic flow:
 
 ## About
 
-This is a graph-based RAG system for querying your PDFs or the web, with LLM-powered reasoning and a Streamlit UI. The system leverages LangGraph to create intelligent agents with tools that can process queries through a sophisticated workflow.
+Agentic RAG is an interactive, graph-based Retrieval-Augmented Generation (RAG) system that lets you query your own PDFs or the web using a modern Streamlit UI. Powered by LLM reasoning, the system uses LangGraph to coordinate a set of intelligent agent nodes, each handling a specialized part of the workflow:
 
-**LangGraph & Agent Architecture:**
-- **LangGraph Framework**: Built on LangGraph for creating stateful, multi-step workflows with intelligent routing
-- **Agent with Tools**: Implements a multi-agent system where different nodes handle specific tasks (ingestion, retrieval, search, rewriting)
-- **Tool Integration**: Agents can use various tools including web search, document processing, and vector database operations
-- **State Management**: Maintains conversation state and context across multiple interactions
-- **Intelligent Routing**: Automatically routes queries to the appropriate processing nodes based on content and requirements
+- **PDF & Web Q&A**: Upload PDF files and ask questions about your documents, or enable web search for open-domain queries.
+- **Agentic Workflow**: A Router Agent Node autonomously decides how to combine document retrieval and web search tools (like Tavily, DuckDuckGo) to answer your query.
+- **LLM-Powered Reasoning**: Answers are refined for clarity and completeness by a dedicated Rewrite Node using LLMs.
+- **Conversation Memory**: Maintains context and state across multiple chat turns for a seamless experience.
 
 ---
 
