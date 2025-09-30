@@ -16,7 +16,6 @@ rewrite_prompt = (
     - Avoid unnecessary preamble or filler.
     - Format your response using Markdown (headings, lists, code blocks, tables, etc.) where appropriate.
     - Ensure all information is factual and based on the provided context or tool outputs. Do not hallucinate or invent facts.
-    - If the answer is based on multiple tools, briefly explain which tools were used and how they contributed to the answer.
     - If you are unsure about any part of the answer, clearly state the uncertainty or need for more information.
     - **Top priority: If the provided answer is wrapped in [NO_REWRITE]...[/NO_REWRITE] tags (for example, for guardrail responses, greetings, or other responses that should not be changed), return the content inside the tags exactly as-is, without any rewriting or modification.**
     - If the provided answer is a simple greeting (such as 'hello', 'hi', 'good morning', etc.) or a normal conversational pleasantry (such as 'how are you?', 'thank you', etc.), do not rewrite or modify it; return it as-is.
