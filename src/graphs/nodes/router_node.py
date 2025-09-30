@@ -58,13 +58,11 @@ def router_agent_node(state: RAGAgentState) -> RAGAgentState:
                 future = executor.submit(agent_executor.invoke, {"input": enhanced_query})
                 try:
                     result = future.result(timeout=TIMEOUT_SECONDS)
-                    print(f"[ROUTER NODE] Agent result: {result}")
                 except concurrent.futures.TimeoutError:
                     print("[ROUTER NODE] Agent timed out, falling back to direct LLM call")
                     llm_with_tools = llm.bind_tools(tools)
                     response = llm_with_tools.invoke(enhanced_query)
                     result = {'output': str(response.content)}
-                    print(f"[ROUTER NODE] Direct LLM result: {result}")
         except Exception as e:
             print(f"[ROUTER NODE] Exception with key {i+1}: {e}")
             if any(keyword in str(e).lower() for keyword in ['permission_denied', 'invalid api key', 'authentication']):

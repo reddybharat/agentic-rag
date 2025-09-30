@@ -15,7 +15,6 @@ def retriever_node(state: RAGAgentState) -> RAGAgentState:
     try:
         # Summarize chat history for context
         history_summary = summarize_chat_history(state.get("messages", []))
-        print(f"[RETRIEVER NODE] History summary: {history_summary}")
         
         # Enhance query with history context
         enhanced_query = state["query"]
@@ -23,14 +22,9 @@ def retriever_node(state: RAGAgentState) -> RAGAgentState:
             enhanced_query = f"Context from previous conversation: {history_summary}\n\nCurrent query: {state['query']}"
         
         try:
-            print(f"[RETRIEVER NODE] Loading Chroma collection 'agentic-rag'...")
             db = IngestData().load_chroma_collection("agentic-rag")
-            print(f"[RETRIEVER NODE] Collection loaded successfully: {type(db)}")
-            print(f"[RETRIEVER NODE] Collection object: {db}")
             
-            print(f"[RETRIEVER NODE] Running retriever with query: '{enhanced_query}'")
             result = Retriever().run_retriever_node(enhanced_query, db, 5)
-            print(f"[RETRIEVER NODE] Retriever result: {result[:200] if result else 'EMPTY'}...")
             
         except Exception as db_error:
             print(f"[RETRIEVER NODE] Database error: {str(db_error)}")

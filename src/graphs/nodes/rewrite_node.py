@@ -43,5 +43,4 @@ def rewrite(state: RAGAgentState) -> RAGAgentState:
         print(f"[REWRITE NODE] Error: {str(e)}")
         state['status'] = "Rewrite Error"
     
-    print(f"[REWRITE NODE] State after rewrite: {state}")
     return state
