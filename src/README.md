@@ -1,2 +1,0 @@
-# Agentic RAG model
-# WIP
