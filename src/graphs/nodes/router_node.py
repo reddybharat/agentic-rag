@@ -1,6 +1,6 @@
 from src.graphs.type import RAGAgentState
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain.agents import AgentExecutor, create_react_agent
+from langchain.agents import create_agent
 from src.helpers.prompts import router_agent_prompt
 from src.tools.web_search_tool import tavily_search_tool, duckduckgo_search_tool
 from src.tools.retriever_tool import retriever_tool
@@ -11,16 +11,10 @@ import json
 from dotenv import load_dotenv
 load_dotenv()
 
-from langchain.prompts import PromptTemplate
 from src.helpers.history_summarizer import summarize_chat_history
 
 
 tools = [tavily_search_tool, duckduckgo_search_tool, retriever_tool]
-
-router_agent_prompt_template = PromptTemplate(
-    input_variables=["input"],
-    template=router_agent_prompt
-)
 
 def router_agent_node(state: RAGAgentState) -> RAGAgentState:
     # Summarize chat history for context
@@ -46,16 +40,19 @@ def router_agent_node(state: RAGAgentState) -> RAGAgentState:
     for i, key in enumerate(gemini_api_keys):
         try:
             llm = ChatGoogleGenerativeAI(google_api_key=key, model="gemini-2.0-flash-lite")
-            agent = create_react_agent(
+            agent = create_agent(
+                model=llm,
                 tools=tools,
-                llm=llm,
-                prompt=router_agent_prompt_template
+                system_prompt=router_agent_prompt
             )
-            agent_executor = AgentExecutor(agent=agent, tools=tools, handle_parsing_errors=True)
             import concurrent.futures
             TIMEOUT_SECONDS = 30  # Increased timeout for debugging
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(agent_executor.invoke, {"input": enhanced_query})
+                current_messages = state.get("messages", [])
+                invoke_payload = {
+                    "messages": current_messages + [HumanMessage(content=enhanced_query)]
+                }
+                future = executor.submit(agent.invoke, invoke_payload)
                 try:
                     result = future.result(timeout=TIMEOUT_SECONDS)
                 except concurrent.futures.TimeoutError:

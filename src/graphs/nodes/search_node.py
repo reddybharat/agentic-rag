@@ -2,11 +2,9 @@ from src.graphs.type import RAGAgentState
 from src.helpers.history_summarizer import summarize_chat_history
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.agents import AgentExecutor, create_react_agent
+from langchain.agents import create_agent
 import os
 import json
-
-from langchain import hub
 
 from src.tools.web_search_tool import tavily_search_tool, duckduckgo_search_tool
 
@@ -15,8 +13,11 @@ load_dotenv()
 
 tools = [tavily_search_tool, duckduckgo_search_tool]
 
-
-search_agent_prompt = hub.pull("hwchase17/react")
+SEARCH_AGENT_SYSTEM_PROMPT = (
+    "You are a helpful web search agent. "
+    "Use the provided tools to search the web and answer the user's question "
+    "as accurately and concisely as possible."
+)
 
 def search_agent_node(state: RAGAgentState) -> RAGAgentState:
     """
@@ -47,17 +48,21 @@ def search_agent_node(state: RAGAgentState) -> RAGAgentState:
         for i, key in enumerate(gemini_api_keys):
             try:
                 llm = ChatGoogleGenerativeAI(google_api_key=key, model="gemini-2.0-flash-lite")
-                agent = create_react_agent(
+                agent = create_agent(
+                    model=llm,
                     tools=tools,
-                    llm=llm,
-                    prompt=search_agent_prompt
+                    system_prompt=SEARCH_AGENT_SYSTEM_PROMPT,
                 )
-                agent_executor = AgentExecutor(agent=agent, tools=tools, handle_parsing_errors=True)
 
                 import concurrent.futures
                 TIMEOUT_SECONDS = 30  # Increased timeout for debugging
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(agent_executor.invoke, {"input": enhanced_query})
+                    # Pass full message history plus the new user query to the agent
+                    current_messages = state.get("messages", [])
+                    invoke_payload = {
+                        "messages": current_messages + [HumanMessage(content=enhanced_query)]
+                    }
+                    future = executor.submit(agent.invoke, invoke_payload)
                     try:
                         result = future.result(timeout=TIMEOUT_SECONDS)
                     except concurrent.futures.TimeoutError:
