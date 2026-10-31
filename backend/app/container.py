@@ -1,15 +1,28 @@
 from dataclasses import dataclass
+from functools import partial
+from pathlib import Path
 from typing import Self
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from app.agent.agent_builder import build_agent
 from app.core.config import Settings
+from app.domain.models import Tier
 from app.domain.ports import Embedder
-from app.infra.db.engine import build_engine
+from app.infra.db.engine import build_engine, build_session_factory
+from app.infra.db.unit_of_work import SqlUnitOfWork
 from app.infra.embeddings.ollama import OllamaEmbedder
 from app.infra.llm import ollama
 from app.infra.llm.model_factory import ModelFactory
+from app.services.chat import ChatService
+from app.services.sessions import SessionService
+
+PROMPTS_DIR = Path(__file__).parent / "agent" / "prompts"
+
+
+def _prompt(name: str) -> str:
+    return (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
 
 
 @dataclass
@@ -21,28 +34,43 @@ class Container:
     ollama_http: httpx.AsyncClient
     model_factory: ModelFactory
     embedder: Embedder
+    sessions: SessionService
+    chat: ChatService
 
     @classmethod
     def build(cls, settings: Settings) -> Self:
+        engine = build_engine(settings.database_url)
+        uow = partial(SqlUnitOfWork, build_session_factory(engine))
+        model_factory = ModelFactory.from_yaml(
+            settings.models_config_path,
+            {
+                ollama.PROVIDER_NAME: ollama.OllamaChatProvider(
+                    settings.ollama_base_url, settings.llm_timeout_s
+                )
+            },
+        )
+        sessions = SessionService(
+            uow, settings.default_owner_id, model_factory.for_tier(Tier.FAST), _prompt("title")
+        )
         return cls(
             settings=settings,
-            engine=build_engine(settings.database_url),
+            engine=engine,
             ollama_http=httpx.AsyncClient(
                 base_url=settings.ollama_base_url, timeout=settings.readiness_timeout_s
             ),
-            model_factory=ModelFactory.from_yaml(
-                settings.models_config_path,
-                {
-                    ollama.PROVIDER_NAME: ollama.OllamaChatProvider(
-                        settings.ollama_base_url, settings.llm_timeout_s
-                    )
-                },
-            ),
+            model_factory=model_factory,
             embedder=OllamaEmbedder(
                 settings.ollama_base_url,
                 settings.embedding_model,
                 settings.embedding_dim,
                 settings.llm_timeout_s,
+            ),
+            sessions=sessions,
+            chat=ChatService(
+                uow,
+                build_agent(model_factory.for_tier(Tier.SMART), _prompt("system")),
+                model_factory.spec_for(Tier.SMART).id,
+                sessions,
             ),
         )
 

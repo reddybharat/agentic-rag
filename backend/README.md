@@ -48,7 +48,7 @@ The extension is created by the superuser once; migrations only run `CREATE EXTE
 ### 5. Ollama
 Update to the latest version from https://ollama.com/download, then:
 ```powershell
-ollama pull qwen3:4b
+ollama pull qwen3:4b-instruct
 ollama pull qwen3-embedding:0.6b
 ```
 

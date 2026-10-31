@@ -1,10 +1,10 @@
 # Architecture
 
-> **Status:** target design for v2. P0 (skeleton: config, logging, errors, `/health`, `/ready`, migrations) and P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`) are built; P2–P5 are in progress. Update this file whenever a phase changes the architecture.
+> **Status:** target design for v2. P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`) and P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`) are built; P3–P5 are in progress. Update this file whenever a phase changes the architecture.
 
 ## TL;DR
 
-- **What:** chat with your PDFs and the web. One agent, running locally on Ollama (`qwen3:4b`), retrieves from Postgres + pgvector and searches the web via Tavily.
+- **What:** chat with your PDFs and the web. One agent, running locally on Ollama (`qwen3:4b-instruct`), retrieves from Postgres + pgvector and searches the web via Tavily.
 - **Core idea: progressive disclosure.** The agent only sees a short *catalog* of capabilities. It calls `load_capability(name)` to unlock a capability's instructions and tools. `documents` switches on automatically once a session has a ready PDF.
 - **Layers:** `api → services → domain ← infra`, with `agent` depending only on domain ports. `container.py` is the only module that wires concrete classes.
 - **Stateless turns:** each question is answered on its own. No history is sent back to the model (follow-ups are a later enhancement).
@@ -22,7 +22,7 @@ flowchart LR
         ui["UI<br/>React + Vite dev server"]
         api["API<br/>FastAPI · uvicorn"]
         db[("PostgreSQL 18<br/>+ pgvector")]
-        ollama["Ollama<br/>qwen3:4b · qwen3-embedding:0.6b"]
+        ollama["Ollama<br/>qwen3:4b-instruct · qwen3-embedding:0.6b"]
     end
 
     tavily["Tavily<br/>web search"]
@@ -92,7 +92,7 @@ sequenceDiagram
     participant API as api/chat
     participant Chat as ChatService
     participant Agent as Agent + middleware
-    participant LLM as Ollama qwen3:4b
+    participant LLM as Ollama qwen3:4b-instruct
     participant Tools as search_docs / tavily_search
 
     UI->>API: POST /sessions/{id}/messages
@@ -261,13 +261,13 @@ Everything comes from `Settings` (env vars, see `.env.example`) plus `config/mod
 models:
   - id: qwen3-4b-fast
     provider: ollama
-    model_name: qwen3:4b
+    model_name: qwen3:4b-instruct
     tier: fast            # titles, classification
     supports_tools: true
     options: { reasoning: false, num_predict: 256 }
   - id: qwen3-4b-smart
     provider: ollama
-    model_name: qwen3:4b
+    model_name: qwen3:4b-instruct
     tier: smart           # answers
     supports_tools: true
     options: { reasoning: false, num_ctx: 8192 }

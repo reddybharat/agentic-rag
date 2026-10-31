@@ -3,13 +3,13 @@
 models:
   - id: qwen3-4b-fast
     provider: ollama
-    model_name: qwen3:4b
+    model_name: qwen3:4b-instruct
     tier: fast            # titles, classification
     supports_tools: true
     options: { reasoning: false, num_predict: 256 }
   - id: qwen3-4b-smart
     provider: ollama
-    model_name: qwen3:4b
+    model_name: qwen3:4b-instruct
     tier: smart           # answers
     supports_tools: true
     options: { reasoning: false, num_ctx: 8192 }

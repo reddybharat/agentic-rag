@@ -15,7 +15,7 @@ def _spec(tier: Tier, **overrides: object) -> ModelSpec:
     fields: dict[str, object] = {
         "id": f"m-{tier}",
         "provider": PROVIDER_NAME,
-        "model_name": "qwen3:4b",
+        "model_name": "qwen3:4b-instruct",
         "tier": tier,
         "supports_tools": True,
     }
@@ -29,8 +29,8 @@ def test_catalog_builds_one_configured_model_per_tier() -> None:
     fast, smart = factory.for_tier(Tier.FAST), factory.for_tier(Tier.SMART)
     assert isinstance(fast, ChatOllama)
     assert isinstance(smart, ChatOllama)
-    assert (fast.model, fast.reasoning, fast.num_predict) == ("qwen3:4b", False, 256)
-    assert (smart.model, smart.reasoning, smart.num_ctx) == ("qwen3:4b", False, 8192)
+    assert (fast.model, fast.reasoning, fast.num_predict) == ("qwen3:4b-instruct", False, 256)
+    assert (smart.model, smart.reasoning, smart.num_ctx) == ("qwen3:4b-instruct", False, 8192)
     assert fast.base_url == BASE_URL
     assert sorted(spec.tier for spec in factory.specs) == [Tier.FAST, Tier.SMART]
 

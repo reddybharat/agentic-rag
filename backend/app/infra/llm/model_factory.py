@@ -30,6 +30,7 @@ class ModelFactory:
             raise ValueError(f"No chat provider registered for {sorted(unknown)}")
 
         self._specs = list(specs)
+        self._specs_by_tier = {spec.tier: spec for spec in specs}
         self._models = {spec.tier: providers[spec.provider].create(spec) for spec in specs}
 
     @classmethod
@@ -40,6 +41,9 @@ class ModelFactory:
     @property
     def specs(self) -> list[ModelSpec]:
         return list(self._specs)
+
+    def spec_for(self, tier: Tier) -> ModelSpec:
+        return self._specs_by_tier[tier]
 
     def for_tier(self, tier: Tier) -> BaseChatModel:
         return self._models[tier]

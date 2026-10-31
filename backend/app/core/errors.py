@@ -16,6 +16,11 @@ class AppError(Exception):
         self.message = message
 
 
+class NotFoundError(AppError):
+    status_code = 404
+    code = "not_found"
+
+
 def _error_body(code: str, message: str) -> dict[str, dict[str, str]]:
     return {"error": {"code": code, "message": message}}
 

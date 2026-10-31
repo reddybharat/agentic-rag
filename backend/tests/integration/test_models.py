@@ -21,14 +21,14 @@ def test_list_models_returns_catalog_without_options() -> None:
         {
             "id": "qwen3-4b-fast",
             "provider": "ollama",
-            "model_name": "qwen3:4b",
+            "model_name": "qwen3:4b-instruct",
             "tier": "fast",
             "supports_tools": True,
         },
         {
             "id": "qwen3-4b-smart",
             "provider": "ollama",
-            "model_name": "qwen3:4b",
+            "model_name": "qwen3:4b-instruct",
             "tier": "smart",
             "supports_tools": True,
         },
