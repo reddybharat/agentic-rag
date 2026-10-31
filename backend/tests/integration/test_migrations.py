@@ -6,7 +6,7 @@ from sqlalchemy import inspect
 
 from app.infra.db.engine import build_engine
 
-APP_TABLES = {"sessions", "turn_usage"}
+APP_TABLES = {"sessions", "turn_usage", "documents", "chunks"}
 
 
 async def _table_names(database_url: str) -> set[str]:

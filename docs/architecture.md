@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** target design for v2. P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`) and P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`) are built; P3–P5 are in progress. Update this file whenever a phase changes the architecture.
+> **Status:** target design for v2. P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`) P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`) and P3 without `web` (capability framework, `documents`, ingestion) are built; `web`, P4 and P5 are in progress. Update this file whenever a phase changes the architecture.
 
 ## TL;DR
 
@@ -43,8 +43,8 @@ Everything runs natively; there is no Docker locally. Ollama uses the GPU direct
 ```mermaid
 flowchart TB
     api["<b>api/</b><br/>routes · schemas · deps<br/><i>HTTP only</i>"]
-    services["<b>services/</b><br/>ChatService · SessionService · IngestionService<br/><i>use cases</i>"]
-    agent["<b>agent/</b><br/>AgentBuilder · middleware · CapabilityRegistry<br/><i>agent loop</i>"]
+    services["<b>services/</b><br/>ChatService · SessionService · DocumentService<br/><i>use cases</i>"]
+    agent["<b>agent/</b><br/>build_agent · middleware · CapabilityRegistry<br/><i>agent loop</i>"]
     domain["<b>domain/</b><br/>models · ports (Protocols)<br/><i>no I/O</i>"]
     infra["<b>infra/</b><br/>db · llm · embeddings · rag · search<br/><i>adapters, I/O only</i>"]
     container{{"<b>container.py</b><br/>composition root"}}
@@ -139,7 +139,7 @@ Qwen's thinking tokens are filtered out before `token` events go out.
 
 ## Capabilities and progressive disclosure
 
-A **capability** is a bundle of `{name, description, instructions, tools, requires_approval, auto_activate_when}`. All tools are registered once when the agent is built; `capability_gate` decides what the model actually sees on each call.
+A **capability** is a bundle of `{name, description, instructions, tools, auto_activate_when}` (`requires_approval` arrives with HITL). All tools are registered once when the agent is built; `capability_gate` decides what the model actually sees on each call.
 
 ```mermaid
 stateDiagram-v2
@@ -159,8 +159,8 @@ stateDiagram-v2
 
 | Capability | Tools | Activation |
 |---|---|---|
-| `documents` | `search_docs` → snippets + page + chunk id + surrounding context | Automatic once the session has a `ready` document |
-| `web` | `tavily_search`, `fetch_page` | On demand via `load_capability("web")` |
+| `documents` | `search_docs` → snippets + page + chunk id + surrounding context from the same page | Automatic once the session has a `ready` document |
+| `web` (not built yet) | `tavily_search`, `fetch_page` | On demand via `load_capability("web")` |
 
 ### Example: what the model sees
 
@@ -187,7 +187,8 @@ Write a new `CapabilityProvider`, register it in `container.py`, and that's it; 
 flowchart LR
     up["POST /sessions/{id}/documents"] --> val{"validate<br/>PDF · size · sha256"}
     val -- "duplicate in session" --> dup["409"]
-    val -- invalid --> bad["422"]
+    val -- "not a PDF" --> bad["422"]
+    val -- "too large" --> big["413"]
     val -- ok --> pend["documents row<br/>status = pending"]
     pend --> bg["background task"]
     bg --> load["pypdf loader"] --> chunk["chunker"] --> emb["qwen3-embedding<br/>1024-d"] --> store[("chunks<br/>pgvector + HNSW")]

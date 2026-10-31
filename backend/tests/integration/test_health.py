@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
@@ -6,6 +8,7 @@ from app.main import REQUEST_ID_HEADER, create_app
 UNREACHABLE_DATABASE_URL = "postgresql+asyncpg://nobody:nobody@127.0.0.1:1/nothing"
 UNREACHABLE_OLLAMA_URL = "http://127.0.0.1:1"
 FAST_TIMEOUT_S = 0.5
+type RunSql = Callable[[str], list[tuple[object, ...]]]
 
 
 def test_health_ok_and_echoes_request_id() -> None:
@@ -31,17 +34,35 @@ def test_ready_is_503_when_dependencies_are_down() -> None:
     assert response.status_code == 503
     assert response.json() == {
         "status": "not_ready",
-        "checks": {"database": False, "ollama": False},
+        "checks": {"database": False, "ollama": False, "embeddings": False},
     }
 
 
-def test_ready_is_200_with_real_dependencies(test_database_url: str, ollama_base_url: str) -> None:
+def test_ready_is_200_with_real_dependencies(
+    migrated_database_url: str, ollama_base_url: str
+) -> None:
     settings = Settings(
-        database_url=test_database_url, ollama_base_url=ollama_base_url, log_json=False
+        database_url=migrated_database_url, ollama_base_url=ollama_base_url, log_json=False
     )
 
     with TestClient(create_app(settings)) as client:
         response = client.get("/ready")
 
     assert response.status_code == 200
-    assert response.json()["checks"] == {"database": True, "ollama": True}
+    assert response.json()["checks"] == {"database": True, "ollama": True, "embeddings": True}
+
+
+def test_ready_fails_when_documents_use_another_embedding_model(
+    migrated_database_url: str, run_sql: RunSql
+) -> None:
+    run_sql(
+        "WITH s AS (INSERT INTO sessions (id, owner_id, title) "
+        "VALUES (gen_random_uuid(), 'local', 't') RETURNING id) "
+        "INSERT INTO documents (id, session_id, filename, sha256, embedding_model, status) "
+        "SELECT gen_random_uuid(), id, 'a.pdf', 'x', 'other-embedder', 'ready' FROM s"
+    )
+    with TestClient(create_app(Settings(database_url=migrated_database_url))) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json()["checks"]["embeddings"] is False

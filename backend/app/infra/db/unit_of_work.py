@@ -3,6 +3,7 @@ from typing import Self
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.infra.db.repositories.documents import SqlDocumentRepository
 from app.infra.db.repositories.sessions import SqlSessionRepository
 from app.infra.db.repositories.usage import SqlUsageRepository
 
@@ -12,6 +13,7 @@ class SqlUnitOfWork:
         self._db = session_factory()
         self.sessions = SqlSessionRepository(self._db)
         self.usage = SqlUsageRepository(self._db)
+        self.documents = SqlDocumentRepository(self._db)
 
     async def __aenter__(self) -> Self:
         return self

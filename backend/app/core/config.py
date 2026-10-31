@@ -18,3 +18,4 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 120.0
     embedding_model: str = "qwen3-embedding:0.6b"
     embedding_dim: int = 1024
+    max_upload_bytes: int = 20 * 1024 * 1024

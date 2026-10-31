@@ -1,8 +1,11 @@
 import uuid
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
+from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict
 
 
@@ -22,6 +25,19 @@ class ModelSpec(BaseModel):
     tier: Tier
     supports_tools: bool
     options: dict[str, str | int | float | bool] = {}
+
+
+@dataclass(frozen=True)
+class Capability:
+    """Unit of progressive disclosure: the agent sees `description` until the capability is
+    active, then `instructions` and `tools`."""
+
+    name: str
+    description: str
+    instructions: str
+    tools: Sequence[BaseTool]
+    # Activates the capability for a session's turn without the model asking for it.
+    auto_activate_when: Callable[[uuid.UUID], Awaitable[bool]] | None = None
 
 
 DEFAULT_SESSION_TITLE = "New chat"
@@ -50,9 +66,67 @@ class TurnUsage(BaseModel):
     latency_ms: int
 
 
+class DocumentStatus(StrEnum):
+    PENDING = "pending"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class Document(BaseModel):
+    """An uploaded PDF, scoped to one session; searchable once `ready`."""
+
+    model_config = ConfigDict(frozen=True, from_attributes=True)
+
+    id: uuid.UUID
+    session_id: uuid.UUID
+    filename: str
+    sha256: str
+    page_count: int | None
+    embedding_model: str
+    status: DocumentStatus
+    error: str | None
+    created_at: datetime
+
+
+class ChunkIn(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    page: int
+    ordinal: int
+    content: str
+    embedding: list[float]
+
+
+class ChunkHit(BaseModel):
+    """A search result plus the chunks around it in the same document."""
+
+    model_config = ConfigDict(frozen=True)
+
+    chunk_id: uuid.UUID
+    filename: str
+    page: int
+    content: str
+    context_before: str
+    context_after: str
+
+
 class TokenEvent(BaseModel):
     type: Literal["token"] = "token"
     text: str
+
+
+class ToolStartEvent(BaseModel):
+    type: Literal["tool_start"] = "tool_start"
+    id: str
+    name: str
+    args: dict[str, object]
+
+
+class ToolEndEvent(BaseModel):
+    type: Literal["tool_end"] = "tool_end"
+    id: str
+    name: str
+    ok: bool
 
 
 class DoneEvent(BaseModel):
@@ -68,4 +142,4 @@ class ErrorEvent(BaseModel):
     message: str
 
 
-type ChatEvent = TokenEvent | DoneEvent | ErrorEvent
+type ChatEvent = TokenEvent | ToolStartEvent | ToolEndEvent | DoneEvent | ErrorEvent

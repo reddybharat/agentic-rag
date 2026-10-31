@@ -4,7 +4,15 @@ from typing import Protocol, Self
 
 from langchain_core.language_models import BaseChatModel
 
-from app.domain.models import ModelSpec, Session, TurnUsage
+from app.domain.models import (
+    Capability,
+    ChunkHit,
+    ChunkIn,
+    Document,
+    ModelSpec,
+    Session,
+    TurnUsage,
+)
 
 
 class ChatModelProvider(Protocol):
@@ -41,6 +49,36 @@ class UsageRepository(Protocol):
     async def add(self, usage: TurnUsage) -> None: ...
 
 
+class DocumentRepository(Protocol):
+    """Scoped by `session_id`; callers resolve the session through the owner filter first."""
+
+    async def add(
+        self, session_id: uuid.UUID, filename: str, sha256: str, embedding_model: str
+    ) -> Document: ...
+
+    async def get_by_sha256(self, session_id: uuid.UUID, sha256: str) -> Document | None: ...
+
+    async def list_by_session(self, session_id: uuid.UUID) -> list[Document]: ...
+
+    async def has_ready(self, session_id: uuid.UUID) -> bool: ...
+
+    async def mark_ready(
+        self, document_id: uuid.UUID, page_count: int, chunks: list[ChunkIn]
+    ) -> None: ...
+
+    async def mark_failed(self, document_id: uuid.UUID, error: str) -> None: ...
+
+    async def search(
+        self, session_id: uuid.UUID, embedding: list[float], limit: int
+    ) -> list[ChunkHit]: ...
+
+    async def has_other_embedding_model(self, embedding_model: str) -> bool: ...
+
+
+class CapabilityProvider(Protocol):
+    def discover(self) -> list[Capability]: ...
+
+
 class UnitOfWork(Protocol):
     """One transaction; changes are discarded unless `commit()` is called before exit."""
 
@@ -49,6 +87,9 @@ class UnitOfWork(Protocol):
 
     @property
     def usage(self) -> UsageRepository: ...
+
+    @property
+    def documents(self) -> DocumentRepository: ...
 
     async def __aenter__(self) -> Self: ...
 

@@ -30,11 +30,12 @@ async def _check(name: str, probe: Awaitable[None], timeout_s: float) -> bool:
 @router.get("/ready")
 async def ready(container: ContainerDep) -> JSONResponse:
     timeout_s = container.settings.readiness_timeout_s
-    database, ollama_ok = await asyncio.gather(
+    database, ollama_ok, embeddings = await asyncio.gather(
         _check("database", db.ping(container.engine), timeout_s),
         _check("ollama", ollama.ping(container.ollama_http), timeout_s),
+        _check("embeddings", container.documents.check_embedding_model(), timeout_s),
     )
-    checks = {"database": database, "ollama": ollama_ok}
+    checks = {"database": database, "ollama": ollama_ok, "embeddings": embeddings}
     ok = all(checks.values())
     return JSONResponse(
         {"status": "ready" if ok else "not_ready", "checks": checks},

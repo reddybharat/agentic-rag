@@ -1,11 +1,28 @@
 import time
 from collections.abc import AsyncIterator, Callable
+from typing import Any, cast
 
 import structlog
-from langchain_core.messages import AIMessageChunk, HumanMessage
+from langchain_core.messages import (
+    AIMessage,
+    AIMessageChunk,
+    BaseMessage,
+    HumanMessage,
+    ToolMessage,
+)
 
 from app.agent.agent_builder import Agent
-from app.domain.models import ChatEvent, DoneEvent, ErrorEvent, Session, TokenEvent, TurnUsage
+from app.agent.state import AgentContext
+from app.domain.models import (
+    ChatEvent,
+    DoneEvent,
+    ErrorEvent,
+    Session,
+    TokenEvent,
+    ToolEndEvent,
+    ToolStartEvent,
+    TurnUsage,
+)
 from app.domain.ports import UnitOfWork
 from app.services.sessions import SessionService
 
@@ -33,9 +50,18 @@ class ChatService:
         started = time.perf_counter()
         input_tokens = output_tokens = 0
         try:
-            async for chunk, _ in self._agent.astream(
-                {"messages": [HumanMessage(text)]}, stream_mode="messages"
+            # "messages" streams model tokens; "updates" yields each finished node's messages,
+            # which is where complete tool calls and tool results appear.
+            async for mode, payload in self._agent.astream(
+                {"messages": [HumanMessage(text)]},
+                stream_mode=["messages", "updates"],
+                context=AgentContext(session_id=session.id),
             ):
+                if mode == "updates":
+                    for event in _tool_events(cast(dict[str, Any], payload)):
+                        yield event
+                    continue
+                chunk, _ = cast(tuple[BaseMessage, dict[str, Any]], payload)
                 if not isinstance(chunk, AIMessageChunk):
                     continue
                 if chunk.usage_metadata:
@@ -65,3 +91,26 @@ class ChatService:
             output_tokens=usage.output_tokens,
             latency_ms=usage.latency_ms,
         )
+
+
+def _tool_events(updates: dict[str, Any]) -> list[ChatEvent]:
+    events: list[ChatEvent] = []
+    for update in updates.values():
+        # Middleware nodes may report `None` instead of a state update.
+        if not isinstance(update, dict):
+            continue
+        for message in update.get("messages", []):
+            if isinstance(message, AIMessage):
+                events += [
+                    ToolStartEvent(id=call["id"] or "", name=call["name"], args=call["args"])
+                    for call in message.tool_calls
+                ]
+            elif isinstance(message, ToolMessage):
+                events.append(
+                    ToolEndEvent(
+                        id=message.tool_call_id,
+                        name=message.name or "",
+                        ok=message.status != "error",
+                    )
+                )
+    return events
