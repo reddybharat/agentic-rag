@@ -262,7 +262,7 @@ An earlier measurement (2026-10-31, 7 queries, 5-document library) showed `qwen3
 - **Unit of work** (`infra/db/unit_of_work.py`): each `async with uow()` is one transaction; nothing persists without `commit()`.
 - **Owner scoping:** every repository method filters by `owner_id`; another owner's session or document behaves as missing (404).
 - **Migrations** (`migrations/versions/`): `0001` sessions + `vector` extension, `0002` turn_usage, `0003` documents + chunks, `0004` documents/chunks scoped to the owner. `env.py` is async and reads `DATABASE_URL` unless `sqlalchemy.url` is set (tests set it).
-- **Errors:** `core/errors.py: AppError` subclasses become `{"error": {"code", "message"}}`: `AppError` 400 `bad_request`, `NotFoundError` 404, `ConflictError` 409, `PayloadTooLargeError` 413, `InvalidDocumentError` 422 `invalid_document`, anything else 500 `internal_error` (logged with traceback). FastAPI validation errors stay 422 with FastAPI's body.
+- **Errors:** `core/errors.py: AppError` subclasses become `{"error": {"code", "message"}}`: `AppError` 400 `bad_request`, `NotFoundError` 404, `ConflictError` 409, `PayloadTooLargeError` 413, `UnknownModelError` 422 `unknown_model`, `InvalidDocumentError` 422 `invalid_document`, anything else 500 `internal_error` (logged with traceback). FastAPI validation errors stay 422 with FastAPI's body.
 
 ---
 
@@ -283,6 +283,9 @@ structlog, console or JSON per `LOG_JSON`; `request_id` on every line of a reque
 | `skills_loaded` | `load_skills` (startup) | skills |
 | `skill_read` | `read_skill_file` | path, status = ok / unknown_path, source = read_skill_file |
 | `tool_locked` | `ProgressiveDisclosure.awrap_tool_call` | tool |
+| `app_error` | `core/errors.py` handler | code, message, path (an `AppError` returned to the client) |
+| `unhandled_error` | `core/errors.py` handler | path (ERROR, with traceback; client gets 500 `internal_error`) |
+| `readiness_check_failed` | `api/routes/health.py: ready` | check, error |
 
 Tests use `structlog.testing.capture_logs` (`tests/integration/test_logging.py`); build the app first, then enter `capture_logs`, because `create_app` configures logging.
 
