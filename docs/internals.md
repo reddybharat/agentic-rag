@@ -286,3 +286,20 @@ The chat-with-document test asserts that `search_docs` is called, the answer con
 | Fixed tiers | no per-question routing | multiple models → routing middleware |
 | Hand-written frontend API types | drift if schemas change (`openapi-typescript` needs TypeScript 5) | API grows → codegen |
 | Stateless turns | no follow-up questions | history enhancement (checkpointer) |
+
+## 13. Logging
+
+structlog, console or JSON per `LOG_JSON`; `request_id` is bound for every line of a request. Logs carry ids, sizes, counts and durations only, never message text, document content or file bytes. Failures log at ERROR with a traceback, rejections and tool errors at WARNING, everything else at INFO.
+
+| Event | Where | Fields |
+|---|---|---|
+| `http_request` | middleware in `main.py` | method, path, status, duration_ms (SSE: time to first byte) |
+| `upload_received` / `upload_rejected` | `DocumentService.upload` | document_id, filename, bytes / reason = size, type, duplicate |
+| `ingestion_started` / `ingestion_done` / `ingestion_failed` | `DocumentService.ingest` | pages, chunks, embed_batches, per-stage `load_ms` `chunk_ms` `embed_ms` `store_ms`, total_ms |
+| `document_deleted` | `DocumentService.delete` | document_id |
+| `turn_started` / `turn_done` / `turn_failed` | `ChatService.stream` | session_id, model_id, tokens, latency_ms |
+| `tool_start` / `tool_end` / `tool_limit_reached` | `ChatService` | tool, tool_call_id, ok, duration_ms |
+| `capability_activated` | `CapabilityGate` | capability, reason = auto / load_capability |
+| `search_done` | `DocumentService.search` | hits, query_chars, duration_ms |
+
+Tests use `structlog.testing.capture_logs` (`tests/integration/test_logging.py`); build the app first, then enter `capture_logs`, because `create_app` configures logging.

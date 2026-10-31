@@ -1,3 +1,4 @@
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -13,6 +14,18 @@ from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
 
 REQUEST_ID_HEADER = "X-Request-ID"
+MS_PER_S = 1000
+
+log = structlog.get_logger()
+
+
+def _request_fields(request: Request, status: int, started: float) -> dict[str, object]:
+    return {
+        "method": request.method,
+        "path": request.url.path,
+        "status": status,
+        "duration_ms": round((time.perf_counter() - started) * MS_PER_S),
+    }
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -38,8 +51,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request_id = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(request_id=request_id)
-        response = await call_next(request)
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            log.error("http_request", **_request_fields(request, 500, started))
+            raise
         response.headers[REQUEST_ID_HEADER] = request_id
+        # For SSE the duration is time to the first byte; `turn_done` carries the full turn.
+        log.info("http_request", **_request_fields(request, response.status_code, started))
         return response
 
     app.add_middleware(

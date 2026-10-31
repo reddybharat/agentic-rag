@@ -1,6 +1,7 @@
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
+import structlog
 from langchain.agents.middleware.types import AgentMiddleware, ModelRequest, ModelResponse
 from langchain.tools import ToolRuntime
 from langchain_core.messages import SystemMessage, ToolMessage
@@ -12,6 +13,8 @@ from app.agent.capabilities.registry import CapabilityRegistry
 from app.agent.state import AgentContext, CapabilityState
 
 LOAD_CAPABILITY = "load_capability"
+
+log = structlog.get_logger()
 
 
 class CapabilityGate(AgentMiddleware[CapabilityState, AgentContext, Any]):
@@ -44,6 +47,7 @@ class CapabilityGate(AgentMiddleware[CapabilityState, AgentContext, Any]):
                 known = ", ".join(c.name for c in registry.capabilities)
                 return f"Unknown capability {name!r}. Available: {known}."
             tool_names = ", ".join(t.name for t in capability.tools)
+            log.info("capability_activated", capability=name, reason="load_capability")
             message = f"Capability {name!r} is active. Tools now available: {tool_names}."
             return Command(
                 update={
@@ -63,6 +67,8 @@ class CapabilityGate(AgentMiddleware[CapabilityState, AgentContext, Any]):
             if c.auto_activate_when is not None
             and await c.auto_activate_when(runtime.context.owner_id)
         ]
+        for name in active:
+            log.info("capability_activated", capability=name, reason="auto")
         return {"active_capabilities": active} if active else None
 
     async def awrap_model_call(

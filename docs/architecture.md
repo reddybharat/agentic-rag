@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** v2, built phase by phase. Detailed walkthrough of every mechanism (embeddings, chunking, model selection, agent loop): [internals.md](internals.md). P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`), P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`), P3 (capability framework, `documents`, ingestion) P4 (shared document library) and P5 (frontend) are built; logging (P6) and skill files (P7) are next. The `web` capability (Tavily) is a later enhancement. Update this file whenever a phase changes the architecture.
+> **Status:** v2, built phase by phase. Detailed walkthrough of every mechanism (embeddings, chunking, model selection, agent loop): [internals.md](internals.md). P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`), P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`), P3 (capability framework, `documents`, ingestion) P4 (shared document library), P5 (frontend) and P6 (structured logging, see internals §13) are built; skill files (P7) are next. The `web` capability (Tavily) is a later enhancement. Update this file whenever a phase changes the architecture.
 
 ## TL;DR
 

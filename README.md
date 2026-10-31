@@ -2,7 +2,7 @@
 
 Chat with your PDFs. One agent running locally on Ollama (`qwen3:4b-instruct`) answers from documents stored in Postgres + pgvector and cites pages. Tools are unlocked on demand through pluggable capabilities.
 
-> v2 is being rebuilt phase by phase: the backend (P0–P4: models, sessions, streaming chat, capabilities, shared PDF library) and the frontend (P5) are built; logging (P6) and skill files (P7) are next. Web search is a later enhancement. The previous Streamlit version lives in git history.
+> v2 is being rebuilt phase by phase: the backend (P0–P4: models, sessions, streaming chat, capabilities, shared PDF library), the frontend (P5) and structured logging (P6) are built; skill files (P7) are next. Web search is a later enhancement. The previous Streamlit version lives in git history.
 
 ## Docs
 - [docs/architecture.md](docs/architecture.md): the big picture (layers, request flow, data model)

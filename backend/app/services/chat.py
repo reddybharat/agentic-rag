@@ -29,6 +29,7 @@ from app.services.sessions import SessionService
 log = structlog.get_logger()
 
 MS_PER_S = 1000
+TOOL_LIMIT_PREFIX = "Tool call limit exceeded"
 
 
 class ChatService:
@@ -48,6 +49,9 @@ class ChatService:
 
     async def stream(self, session: Session, text: str) -> AsyncIterator[ChatEvent]:
         started = time.perf_counter()
+        turn_log = log.bind(session_id=str(session.id), owner_id=session.owner_id)
+        turn_log.info("turn_started", model_id=self._model_id, message_chars=len(text))
+        tool_started: dict[str, float] = {}
         input_tokens = output_tokens = 0
         try:
             # "messages" streams model tokens; "updates" yields each finished node's messages,
@@ -59,6 +63,7 @@ class ChatService:
             ):
                 if mode == "updates":
                     for event in _tool_events(cast(dict[str, Any], payload)):
+                        _log_tool_event(turn_log, event, tool_started)
                         yield event
                     continue
                 chunk, _ = cast(tuple[BaseMessage, dict[str, Any]], payload)
@@ -71,7 +76,7 @@ class ChatService:
                 if chunk.text:
                     yield TokenEvent(text=chunk.text)
         except Exception:
-            log.exception("chat_turn_failed", session_id=str(session.id))
+            turn_log.exception("turn_failed")
             yield ErrorEvent(code="chat_failed", message="The model failed to answer. Try again.")
             return
 
@@ -86,10 +91,31 @@ class ChatService:
             await uow.usage.add(usage)
             await uow.commit()
         await self._sessions.auto_title(session, text)
+        turn_log.info(
+            "turn_done",
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            latency_ms=usage.latency_ms,
+        )
         yield DoneEvent(
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
             latency_ms=usage.latency_ms,
+        )
+
+
+def _log_tool_event(
+    turn_log: structlog.typing.FilteringBoundLogger, event: ChatEvent, started: dict[str, float]
+) -> None:
+    if isinstance(event, ToolStartEvent):
+        started[event.id] = time.perf_counter()
+        turn_log.info("tool_start", tool=event.name, tool_call_id=event.id)
+    elif isinstance(event, ToolEndEvent):
+        begun = started.pop(event.id, None)
+        duration_ms = None if begun is None else round((time.perf_counter() - begun) * MS_PER_S)
+        emit = turn_log.info if event.ok else turn_log.warning
+        emit(
+            "tool_end", tool=event.name, tool_call_id=event.id, ok=event.ok, duration_ms=duration_ms
         )
 
 
@@ -106,6 +132,8 @@ def _tool_events(updates: dict[str, Any]) -> list[ChatEvent]:
                     for call in message.tool_calls
                 ]
             elif isinstance(message, ToolMessage):
+                if str(message.content).startswith(TOOL_LIMIT_PREFIX):
+                    log.warning("tool_limit_reached", tool=message.name)
                 events.append(
                     ToolEndEvent(
                         id=message.tool_call_id,
