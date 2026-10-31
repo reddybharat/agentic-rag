@@ -230,6 +230,8 @@ A `Capability` (`app/domain/models.py`) is `{name, description, instructions, to
 
 Order: (`tool_start`/`tool_end` and `token` interleaved)* then exactly one `done` or `error`.
 
+The frontend (`frontend/src/lib/api.ts`) reads this with `fetch` + `TextDecoderStream`, splitting frames on a blank line and turning `event:`/`data:` into `{type, ...data}`. Its API types are hand-written mirrors of the backend schemas.
+
 ---
 
 ## 9. Persistence rules
@@ -282,4 +284,5 @@ The chat-with-document test asserts that `search_docs` is called, the answer con
 | Size check after the body is received | multipart spools the whole upload first | exposed publicly → body limit at the proxy |
 | pypdf text only | no OCR, tables flattened | scanned PDFs matter → OCR loader |
 | Fixed tiers | no per-question routing | multiple models → routing middleware |
+| Hand-written frontend API types | drift if schemas change (`openapi-typescript` needs TypeScript 5) | API grows → codegen |
 | Stateless turns | no follow-up questions | history enhancement (checkpointer) |

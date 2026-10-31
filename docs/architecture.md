@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** v2, built phase by phase. Detailed walkthrough of every mechanism (embeddings, chunking, model selection, agent loop): [internals.md](internals.md). P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`), P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`), P3 (capability framework, `documents`, ingestion) and P4 (shared document library) are built; the frontend (P5), logging (P6) and skill files (P7) are next. The `web` capability (Tavily) is a later enhancement. Update this file whenever a phase changes the architecture.
+> **Status:** v2, built phase by phase. Detailed walkthrough of every mechanism (embeddings, chunking, model selection, agent loop): [internals.md](internals.md). P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`), P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`), P3 (capability framework, `documents`, ingestion) P4 (shared document library) and P5 (frontend) are built; logging (P6) and skill files (P7) are next. The `web` capability (Tavily) is a later enhancement. Update this file whenever a phase changes the architecture.
 
 ## TL;DR
 
@@ -307,6 +307,10 @@ Both tiers use the same model so Ollama never swaps models within 6 GB of VRAM. 
 | Dependency Injection | `container.py` |
 
 ---
+
+## Frontend (P5)
+
+`frontend/` is a React + Vite SPA (Tailwind, shadcn/ui) that talks to the backend directly (CORS allows `http://localhost:5173`; base URL from `VITE_API_URL`). `src/lib/api.ts` holds the typed REST calls and `streamMessage`, which POSTs a message and parses the SSE stream (`EventSource` cannot POST). Views: sessions sidebar (new/rename/delete), chat (markdown with raw HTML skipped, collapsed tool-step line per answer), and Library (drop zone/picker, per-file status, polls every 2 s while any document is `pending`). Chat turns live in tab state only: a refresh clears them, matching the stateless backend.
 
 ## Not yet in the architecture
 
