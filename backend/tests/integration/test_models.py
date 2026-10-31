@@ -1,7 +1,6 @@
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
-from app.domain.models import Tier
 from app.infra.embeddings.ollama import OllamaEmbedder
 from app.infra.llm.model_factory import ModelFactory
 from app.infra.llm.ollama import PROVIDER_NAME, OllamaChatProvider
@@ -19,30 +18,22 @@ def test_list_models_returns_catalog_without_options() -> None:
     assert response.status_code == 200
     assert response.json() == [
         {
-            "id": "qwen3-4b-fast",
+            "id": "qwen3-4b",
             "provider": "ollama",
             "model_name": "qwen3:4b-instruct",
-            "tier": "fast",
             "supports_tools": True,
-        },
-        {
-            "id": "qwen3-4b-smart",
-            "provider": "ollama",
-            "model_name": "qwen3:4b-instruct",
-            "tier": "smart",
-            "supports_tools": True,
-        },
+        }
     ]
 
 
-async def test_fast_model_answers_via_ollama(ollama_base_url: str) -> None:
+async def test_model_answers_via_ollama(ollama_base_url: str) -> None:
     settings = Settings(database_url=UNREACHABLE_DATABASE_URL, ollama_base_url=ollama_base_url)
     factory = ModelFactory.from_yaml(
         settings.models_config_path,
         {PROVIDER_NAME: OllamaChatProvider(ollama_base_url, LLM_TIMEOUT_S)},
     )
 
-    reply = await factory.for_tier(Tier.FAST).ainvoke("Reply with the single word: pong")
+    reply = await factory.model.ainvoke("Reply with the single word: pong")
 
     assert "pong" in str(reply.content).lower()
 

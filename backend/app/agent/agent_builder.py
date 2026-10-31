@@ -1,4 +1,4 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from langchain.agents import create_agent
@@ -8,7 +8,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langgraph.graph.state import CompiledStateGraph
 
-from app.agent.middleware.progressive_disclosure import Condition, ProgressiveDisclosure
+from app.agent.middleware.progressive_disclosure import ProgressiveDisclosure
 from app.agent.skill_loader import SkillCatalog
 from app.agent.state import AgentContext
 from app.agent.tools import make_read_skill_file
@@ -23,15 +23,13 @@ def build_agent(
     system_prompt: str,
     catalog: SkillCatalog,
     tools: Sequence[BaseTool],
-    conditions: Mapping[str, Condition],
 ) -> Agent:
     named = {t for s in catalog.skills.values() for t in s.allowed_tools}
-    named |= {r.name for r in catalog.tool_rules}
     missing = named - {t.name for t in tools}
     if missing:
-        raise ValueError(f"skills or preactivation.yaml name unknown tools: {sorted(missing)}")
+        raise ValueError(f"skills name unknown tools: {sorted(missing)}")
     middleware: list[AgentMiddleware[Any, AgentContext, Any]] = [
-        ProgressiveDisclosure(catalog, conditions),
+        ProgressiveDisclosure(catalog),
         # Over the limit, further tool calls get an error result and the model has to answer.
         ToolCallLimitMiddleware(run_limit=MAX_TOOL_CALLS_PER_TURN, exit_behavior="continue"),
     ]

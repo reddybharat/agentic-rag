@@ -8,9 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.agent.agent_builder import build_agent
 from app.agent.skill_loader import load_skills
-from app.agent.tools import make_retrieve_documents
+from app.agent.tools import make_retrieve_from_documents
 from app.core.config import Settings
-from app.domain.models import Tier
 from app.domain.ports import Embedder
 from app.infra.db.engine import build_engine, build_session_factory
 from app.infra.db.unit_of_work import SqlUnitOfWork
@@ -24,8 +23,6 @@ from app.services.documents import DocumentService
 from app.services.sessions import SessionService
 
 PROMPTS_DIR = Path(__file__).parent / "agent" / "prompts"
-# Condition names usable as `when:` in skills/preactivation.yaml.
-LIBRARY_HAS_DOCUMENTS = "library_has_documents"
 
 
 def _prompt(name: str) -> str:
@@ -57,9 +54,7 @@ class Container:
                 )
             },
         )
-        sessions = SessionService(
-            uow, settings.default_owner_id, model_factory.for_tier(Tier.FAST), _prompt("title")
-        )
+        sessions = SessionService(uow, settings.default_owner_id)
         embedder = OllamaEmbedder(
             settings.ollama_base_url,
             settings.embedding_model,
@@ -87,13 +82,12 @@ class Container:
             chat=ChatService(
                 uow,
                 build_agent(
-                    model_factory.for_tier(Tier.SMART),
+                    model_factory.model,
                     _prompt("system"),
                     load_skills(),
-                    [make_retrieve_documents(documents.search)],
-                    {LIBRARY_HAS_DOCUMENTS: documents.has_ready},
+                    [make_retrieve_from_documents(documents.search)],
                 ),
-                model_factory.spec_for(Tier.SMART).id,
+                model_factory.spec.id,
                 sessions,
             ),
         )

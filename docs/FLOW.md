@@ -50,7 +50,7 @@ $s = (Invoke-RestMethod -Method Post http://localhost:8000/sessions -ContentType
 curl.exe -N -X POST http://localhost:8000/sessions/$s/messages -H "Content-Type: application/json" -d '{\"text\":\"What is the phase two budget?\"}'
 ```
 
-Expect `tool_start`/`tool_end` for `read_skill_file` (pre-read), then for `retrieve_documents`, then `token`… and `done`, with a citation like `(sample.pdf, p. 3)`. Uploading the same file again returns 409; `curl.exe -X DELETE http://localhost:8000/documents/<id>` removes it. Interactive API docs: http://localhost:8000/docs.
+Expect `tool_start`/`tool_end` for `read_skill_file`, then for `retrieve_from_documents`, then `token`… and `done`, with a citation like `(sample.pdf, p. 3)`. Uploading the same file again returns 409; `curl.exe -X DELETE http://localhost:8000/documents/<id>` removes it. Interactive API docs: http://localhost:8000/docs.
 
 Inspect the database with `psql -U app -d agentic_rag`:
 
@@ -74,18 +74,17 @@ SELECT model_id, input_tokens, output_tokens, latency_ms FROM turn_usage ORDER B
 engine (SQLAlchemy async, asyncpg, pool_pre_ping)
  └─ uow = SqlUnitOfWork factory              one DB transaction per `async with uow()`
 ModelFactory.from_yaml(config/models.yaml, {"ollama": OllamaChatProvider})
-SessionService(uow, owner, fast model, prompts/title.md)
+SessionService(uow, owner)
 OllamaEmbedder(qwen3-embedding:0.6b, dim 1024)
 DocumentService(uow, owner, embedder, load_pdf_pages, split_words, MAX_UPLOAD_BYTES)
-build_agent(smart model,
+build_agent(model_factory.model,
             prompts/system.md,                  base system prompt
             load_skills(),                      agent/skills/
-            [make_retrieve_documents(documents.search)],
-            {"library_has_documents": documents.has_ready})
-ChatService(uow, agent, "qwen3-4b-smart", sessions)
+            [make_retrieve_from_documents(documents.search)])
+ChatService(uow, agent, "qwen3-4b", sessions)
 ```
 
-Startup fails fast on a malformed skill file, an unknown tool in `allowed-tools` or `preactivation.yaml`, or an unknown pre-activation condition. Routes get services through `api/deps.py` (`request.app.state.container`).
+Startup fails fast on a malformed skill file, or an unknown tool in `allowed-tools`. Routes get services through `api/deps.py` (`request.app.state.container`).
 
 ---
 
@@ -95,13 +94,12 @@ Startup fails fast on a malformed skill file, an unknown tool in `allowed-tools`
 
 1. The `get_session` dependency loads the session with the owner filter. An unknown session gives 404 **before** the stream starts.
 2. `services/chat.py: ChatService.stream` calls `agent.astream({"messages": [HumanMessage(text)]}, stream_mode=["messages", "updates"], context=AgentContext(owner_id))`.
-3. `ProgressiveDisclosure.abefore_agent` (§7.3) enables condition tools and pre-reads triggered skills.
-4. The agent loops: model call → tool calls → model call … until an answer or 8 tool calls.
-5. Stream mapping:
+3. The agent loops: model call → tool calls → model call … until an answer or 8 tool calls.
+4. Stream mapping:
    - `messages` mode → `AIMessageChunk`s → one `token` event per non-empty `.text` (thinking never appears in `.text`). `usage_metadata` is summed over all model calls.
-   - `updates` mode → an `AIMessage` with `tool_calls` gives a `tool_start` per call (the pre-read round included); a `ToolMessage` gives `tool_end` (`ok = status != "error"`).
-6. An exception during the stream → logged with traceback → one `error` event (`chat_failed`); no usage is saved.
-7. On success: insert `turn_usage` → `SessionService.auto_title` (only while the title is `New chat`; fast model; a failure is logged as a warning and never fails the turn) → `done`.
+   - `updates` mode → an `AIMessage` with `tool_calls` gives a `tool_start` per call; a `ToolMessage` gives `tool_end` (`ok = status != "error"`).
+5. An exception during the stream → logged with traceback → one `error` event (`chat_failed`); no usage is saved.
+6. On success: insert `turn_usage` → `SessionService.title_from_message` (only while the title is `New chat`: the first message with whitespace collapsed, cut to `SESSION_TITLE_CHARS = 60` with a trailing `…`; no model call) → `done`.
 
 ### SSE events
 
@@ -119,15 +117,14 @@ Order: `tool_start`/`tool_end` and `token` interleaved, then exactly one `done` 
 
 ## 4. Chat models
 
-`config/models.yaml` → `ModelSpec {id, provider, model_name, tier, supports_tools, options}`:
+`config/models.yaml` → `ModelSpec {id, provider, model_name, supports_tools, options}`. The catalog holds exactly one model:
 
-| id | model | tier | options | used by |
-|---|---|---|---|---|
-| `qwen3-4b-fast` | `qwen3:4b-instruct` | fast | `reasoning: false`, `num_predict: 256` | session auto-title |
-| `qwen3-4b-smart` | `qwen3:4b-instruct` | smart | `reasoning: false`, `num_ctx: 8192` | the agent |
+| id | model | options | used by |
+|---|---|---|---|
+| `qwen3-4b` | `qwen3:4b-instruct` | `reasoning: false`, `num_ctx: 8192` | the agent |
 
-- Selection is fixed at startup: `ModelFactory.for_tier(Tier.SMART)` for the agent, `for_tier(Tier.FAST)` for titles. `GET /models` lists the catalog.
-- `infra/llm/model_factory.py: ModelFactory` fails startup if a tier has zero or several models, or a spec names an unregistered provider. It builds each model once.
+- `ModelFactory.model` is the agent's model and `ModelFactory.spec` its catalog entry, both fixed at startup. `GET /models` returns that one spec.
+- `infra/llm/model_factory.py: ModelFactory` fails startup if the catalog has zero or several models, or the spec names an unregistered provider. It builds the model once.
 - `infra/llm/ollama.py: OllamaChatProvider` **rejects unknown option keys**, because `ChatOllama` silently ignores them.
 - `qwen3:4b-instruct` is the non-thinking variant; `reasoning: false` is the ChatOllama field that turns thinking off. `num_ctx: 8192` leaves room for the system prompt, read skills and 4 passages.
 
@@ -179,92 +176,78 @@ POST /documents (multipart "file", one file per request)
 `agent/agent_builder.py: build_agent`:
 
 ```text
-create_agent(smart model,
-             tools=[read_skill_file, retrieve_documents],
+create_agent(model,
+             tools=[read_skill_file, retrieve_from_documents],
              system_prompt=catalog.system_prompt(system.md),     base prompt + skill index
-             middleware=[ProgressiveDisclosure(catalog, conditions),
+             middleware=[ProgressiveDisclosure(catalog),
                          ToolCallLimitMiddleware(run_limit=8, exit_behavior="continue")],
              context_schema=AgentContext)
 ```
 
 - **Context:** `agent/state.py: AgentContext(owner_id)`, passed per run, readable by middleware and tools.
-- **State:** `messages` plus `enabled_tools` (`DisclosureState`). It lives for one run: no checkpointer.
+- **State:** `messages` only, for one run: no checkpointer.
 - After 8 tool calls, further calls get an error result and the model has to answer.
 
 ### 7.1 System prompt
 
-`SkillCatalog.system_prompt(base)` = `prompts/system.md` + `## Skills` + one index line per skill:
+`SkillCatalog.system_prompt(base)` = `prompts/system.md` + `## Skills` + `Available skills:` + one index line per skill (name, path, description, `allowed-tools`):
 
 ```text
 <prompts/system.md>
 
 ## Skills
-Read a skill with `read_skill_file` before using its tools. Skills:
-- answering-document-questions (`answering-document-questions/SKILL.md`): Read when the user asks a question ...
+Available skills:
+- retrieving-from-documents (`retrieving-from-documents/SKILL.md`): Read before answering any question, ... Tools: retrieve_from_documents
 ```
 
-Skill bodies are never in the system prompt; they arrive as `read_skill_file` results.
+Skill bodies are never in the system prompt; they arrive as `read_skill_file` results. `system.md` tells the model to read a skill with `read_skill_file` before using its tools.
 
 ### 7.2 Skills (`agent/skill_loader.py: load_skills`)
 
-Reads `agent/skills/` once at startup and fails fast with the bad path:
-- `<name>/SKILL.md`: frontmatter `name` (= folder name), `description`, `allowed-tools` (non-empty, space-separated). The whole file text is kept, because the middleware matches on it.
-- `preactivation.yaml`: `max_skills >= 1`; `skills:` rules name a known skill and single-word triggers; `tools:` rules have a string `tool` and `when`.
+Reads `agent/skills/` once at startup and fails fast with the bad path: `<name>/SKILL.md` needs frontmatter `name` (= folder name), `description`, `allowed-tools` (non-empty, space-separated), and at least one skill must exist. The whole file text is kept, because the middleware matches on it. Frontmatter is YAML, so a colon followed by a space inside a description breaks the file.
 
 | Skill | allowed-tools | Does |
 |---|---|---|
-| `answering-document-questions` | `retrieve_documents` | retrieve, retry once with other words, answer from the passages |
+| `retrieving-from-documents` | `retrieve_from_documents` | explains the tool, searches (retry once with other words), answers from the passages with `(filename, p. N)` citations, says so when nothing is found |
 
 The format is documented in [skill-template/SKILL.md](skill-template/SKILL.md).
 
-### 7.3 Pre-activation and progressive disclosure (`agent/middleware/progressive_disclosure.py: ProgressiveDisclosure`)
+### 7.3 Progressive disclosure (`agent/middleware/progressive_disclosure.py: ProgressiveDisclosure`)
 
-`agent/skills/preactivation.yaml`:
+1. **`awrap_model_call`:** the model sees `read_skill_file` plus unlocked tools. Unlocked = `allowed-tools` of every skill whose exact text is a `read_skill_file` result this turn.
+2. **`awrap_tool_call`:** a locked tool returns `Tool '<name>' is locked. Read the skill that lists it first.` (status error) without running.
 
-| Rule | Effect |
-|---|---|
-| `skills:` `answering-document-questions` ← what, who, when, where, why, how, which, explain, define, describe, tell, about, list, give, show, document, documents, pdf, page | pre-read |
-| `tools:` `retrieve_documents` when `library_has_documents` | enabled without a skill |
-| `max_skills: 2` | cap on pre-read skills |
-
-1. **`abefore_agent`, once per turn:**
-   - For each `tools:` rule, runs the named condition with the owner id. `library_has_documents` is `DocumentService.has_ready` (one `EXISTS` query for a `ready` document). Hits go to `enabled_tools`.
-   - `SkillCatalog.preactivate(question)` lowercases the question, splits it into words, and returns skills whose triggers match, in rule order, capped at `max_skills`. For the hits it appends a synthetic `AIMessage(tool_calls=[read_skill_file(path)])` and matching `ToolMessage(file text)`. LangChain treats this as a finished tool round, so it saves a model call; the UI shows it as a `read_skill_file` step.
-2. **`awrap_model_call`:** the model sees `read_skill_file` plus unlocked tools. Unlocked = `enabled_tools` ∪ `allowed-tools` of every skill whose exact text is a `read_skill_file` result this turn.
-3. **`awrap_tool_call`:** a locked tool returns `Tool '<name>' is locked. Read the skill that lists it first.` (status error) without running.
+A document question therefore takes at least three model calls: read the skill, search, answer.
 
 ### 7.4 Tools (`agent/tools.py`)
 
 | Tool | Available | Returns |
 |---|---|---|
 | `read_skill_file(path)` | always | the skill file text, or `Unknown file '<path>'. Available: [...]` |
-| `retrieve_documents(query)` | library has a `ready` document, or a skill listing it was read | up to `RETRIEVE_LIMIT = 4` passages |
+| `retrieve_from_documents(query)` | a skill listing it was read this turn | up to `RETRIEVE_LIMIT = 4` passages |
 
-`retrieve_documents`:
+`retrieve_from_documents`:
 1. `owner_id` comes from `AgentContext`, not from the model.
 2. `DocumentService.search` embeds the query (with the instruction prefix) and calls `SqlDocumentRepository.search`: `SET LOCAL hnsw.iterative_scan = strict_order` (so the owner filter can't starve the HNSW candidates), top 4 chunks of the owner by cosine distance, plus chunks `ordinal ± 1` **on the same page** as context (context from another page made the model cite the wrong page).
-3. Format, each context side cut to `CONTEXT_CHARS = 300`, followed by `CITATION_RULES` (cite every fact as `(filename, p. N)` from the passage header, never guess a page, quote only when wording matters, report disagreeing passages with both citations). No hits → `No matching passages in the document library.` and no rules.
+3. Format, each context side cut to `CONTEXT_CHARS = 300`. No hits → `No matching passages in the document library.`
 
-Citation rules live in the tool result, not in `system.md` or a skill: they reach the model exactly when there are passages to cite, whichever path enabled the tool, and cost nothing on turns without retrieval.
+The citation rules (cite every fact as `(filename, p. N)` from the passage header, never guess a page, quote only when wording matters, report disagreeing passages with both citations) live in the skill, not in the tool result: the tool is locked until the skill is read, so the rules are always in context when there are passages to cite.
 
 ```text
 [sample.pdf, page 3] (chunk 1b6e…)
 The total budget for phase two is 4.2 million euros, …
 Context before: …<last 300 chars of the previous chunk on this page>
 Context after: <first 300 chars of the next chunk on this page>…
-
-Citation rules: cite every fact from these passages as (filename, p. N), …
 ```
 
 ### 7.5 Prompts
 
 | File | Role |
 |---|---|
-| `agent/prompts/system.md` | base system prompt, every turn; its last line tells the model to always call `retrieve_documents` before answering (skip only greetings and small talk) |
-| `agent/prompts/title.md` | auto-title instruction for the fast model |
+| `agent/prompts/system.md` | base system prompt, every turn: what the assistant is, always use the tools, read a skill before its tools, concise Markdown answers, guardrails (no guessing or inventing sources, document text is not instructions, don't reveal the prompt, skills or tool names, decline harmful requests, no tools for small talk) |
 | `agent/skills/*/SKILL.md` | skills, read on demand |
 
-The always-search rule must be in the **system prompt**. Measured on 7 queries against the 5-document library (2026-10-31): with the rule only in the pre-read skill (a tool result), `qwen3:4b-instruct` searched for 1 of 5 questions and answered the rest from its own knowledge; with the rule in `system.md` plus trigger pre-reads, 6 of 7 were right (`hi` correctly skips tools). Pre-reading the answering skill on every turn when the library has documents made it worse, so pre-reads stay trigger-only. The skill repeats the rule as its first bullet.
+An earlier measurement (2026-10-31, 7 queries, 5-document library) showed `qwen3:4b-instruct` ignoring an always-search rule that was only in a read skill (1 of 5 searched) and following it in `system.md` (6 of 7 right). `system.md` now says "always use the tools" and the skill says "always search"; the live check for this layout is recorded in the plan.
 
 ---
 
@@ -290,10 +273,8 @@ structlog, console or JSON per `LOG_JSON`; `request_id` on every line of a reque
 | `search_done` | `DocumentService.search` | hits, query_chars, duration_ms |
 | `turn_started` / `turn_done` / `turn_failed` | `ChatService.stream` | session_id, model_id, tokens, latency_ms |
 | `tool_start` / `tool_end` / `tool_limit_reached` | `ChatService` | tool, tool_call_id, ok, duration_ms |
-| `skills_loaded` | `load_skills` (startup) | skills, tool_rules |
-| `tool_enabled` | `ProgressiveDisclosure.abefore_agent` | tool |
-| `preactivate` | `SkillCatalog.preactivate` | selected, triggers |
-| `skill_read` | `read_skill_file` / `ProgressiveDisclosure` | path, status = ok / unknown_path, source = read_skill_file / preactivate |
+| `skills_loaded` | `load_skills` (startup) | skills |
+| `skill_read` | `read_skill_file` | path, status = ok / unknown_path, source = read_skill_file |
 | `tool_locked` | `ProgressiveDisclosure.awrap_tool_call` | tool |
 
 Tests use `structlog.testing.capture_logs` (`tests/integration/test_logging.py`); build the app first, then enter `capture_logs`, because `create_app` configures logging.
@@ -326,11 +307,11 @@ Tests hit **real** Postgres (`TEST_DATABASE_URL`, truncated before each test) an
 
 | Test file | Checks |
 |---|---|
-| `tests/unit/test_skill_loader.py` | shipped skills load and are indexed; trigger matching; malformed files rejected |
-| `tests/unit/test_progressive_disclosure.py` | tools hidden until unlocked; condition enables a tool; pre-read round; locked call refused; unknown condition rejected |
-| `tests/unit/test_chunkers.py`, `test_model_factory.py` | chunk packing/overlap; catalog validation |
-| `tests/integration/test_documents.py` | upload validation, ingestion, delete cascade, owner isolation, chat answer cites p. 3 via `retrieve_documents` |
-| `tests/integration/test_chat.py`, `test_sessions.py`, `test_models.py`, `test_health.py` | SSE turn + usage + auto-title, error event, session CRUD, `/models`, `/health` + `/ready` |
+| `tests/unit/test_skill_loader.py` | shipped skill loads and is indexed with its tools; malformed or empty skill dirs rejected |
+| `tests/unit/test_progressive_disclosure.py` | tools hidden until a skill is read; locked call refused; citation rules live in the skill, tool result is passages only |
+| `tests/unit/test_chunkers.py`, `test_model_factory.py` | chunk packing/overlap; one-model catalog validation |
+| `tests/integration/test_documents.py` | upload validation, ingestion, delete cascade, owner isolation, chat answer cites p. 3 via `retrieve_from_documents` |
+| `tests/integration/test_chat.py`, `test_sessions.py`, `test_models.py`, `test_health.py` | SSE turn + usage + first-message title, error event, session CRUD, `/models`, `/health` + `/ready` |
 | `tests/integration/test_logging.py` | key log events for ingestion and a chat turn |
 | `tests/integration/test_migrations.py` | upgrade → downgrade → upgrade, `0004` backfill and dedupe |
 
@@ -345,9 +326,9 @@ The chat-with-document tests depend on model output and can fail intermittently.
 | FastAPI `BackgroundTasks` for ingestion | in-flight jobs lost on restart; the row stays `pending` | ingestion must survive restarts → job queue |
 | Size check after the body is received | multipart spools the whole upload first | exposed publicly → body limit at the proxy |
 | pypdf text only | no OCR, tables flattened | scanned PDFs matter → OCR loader |
-| Fixed tiers | no per-question routing | several models → routing middleware |
-| Word-match pre-activation | "what"/"how" pre-read the answering skill even for small talk; phrasings without a trigger cost one extra model call | measured misses → tune triggers |
+| One fixed model | no per-question routing | several models → routing middleware |
+| Skill read by the model itself | every document question costs one extra model call, and the model can skip the read and answer from memory | live check under 5 of 6 searching → name the skill in `system.md`, then make the tool always available |
 | Hand-written frontend API types | drift if schemas change | API grows → codegen |
 | Stateless turns | no follow-up questions | history (checkpointer) |
 | Read skill text stays in the turn | resent on every model call of the turn | long tool loops → evict old skill text |
-| Model may skip retrieval on familiar topics | "Tell me about chain of thought prompting" reads the skill but answers "no information" without searching, although `cot prompting.pdf` is ready | still failing → force a first `retrieve_documents` call (`tool_choice`) when the library has documents |
+| Model may skip retrieval on familiar topics | before the pre-read was removed, "Tell me about chain of thought prompting" answered "no information" without searching; not re-measured | still failing → force a first `retrieve_from_documents` call (`tool_choice`) |

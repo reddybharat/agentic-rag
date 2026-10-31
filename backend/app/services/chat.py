@@ -90,7 +90,7 @@ class ChatService:
         async with self._uow() as uow:
             await uow.usage.add(usage)
             await uow.commit()
-        await self._sessions.auto_title(session, text)
+        await self._sessions.title_from_message(session, text)
         turn_log.info(
             "turn_done",
             input_tokens=usage.input_tokens,

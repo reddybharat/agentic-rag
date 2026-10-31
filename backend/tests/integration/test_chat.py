@@ -5,7 +5,6 @@ from collections.abc import Callable
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
-from app.domain.models import DEFAULT_SESSION_TITLE
 from app.main import create_app
 
 UNREACHABLE_OLLAMA_URL = "http://127.0.0.1:1"
@@ -20,6 +19,7 @@ def _events(body: str) -> list[tuple[str, dict[str, object]]]:
     return events
 
 
+QUESTION = "What is the capital of France? Answer in one word."
 USAGE_SQL = "SELECT model_id, input_tokens, output_tokens FROM turn_usage"
 type RunSql = Callable[[str], list[tuple[object, ...]]]
 
@@ -34,7 +34,7 @@ def test_chat_streams_answer_records_usage_and_titles_session(
         session_id = client.post("/sessions", json={}).json()["id"]
         response = client.post(
             f"/sessions/{session_id}/messages",
-            json={"text": "What is the capital of France? Answer in one word."},
+            json={"text": QUESTION},
         )
         title = client.get(f"/sessions/{session_id}").json()["title"]
 
@@ -46,8 +46,8 @@ def test_chat_streams_answer_records_usage_and_titles_session(
     assert done_name == "done"
     assert isinstance(done["output_tokens"], int)
     assert done["output_tokens"] > 0
-    assert run_sql(USAGE_SQL) == [("qwen3-4b-smart", done["input_tokens"], done["output_tokens"])]
-    assert title not in ("", DEFAULT_SESSION_TITLE)
+    assert run_sql(USAGE_SQL) == [("qwen3-4b", done["input_tokens"], done["output_tokens"])]
+    assert title == QUESTION
 
 
 def test_chat_emits_error_event_when_model_is_unreachable(

@@ -5,7 +5,7 @@ The design and why it is this way. What is implemented right now, file by file, 
 ## TL;DR
 
 - **What:** chat with your PDFs. One agent on Ollama (`qwen3:4b-instruct`) answers from a per-owner document library in Postgres + pgvector and cites pages.
-- **Progressive disclosure:** the model starts with a small base system prompt and a one-line index of skills. It reads a skill (`read_skill_file`) before it can use the skill's tools. Deterministic pre-activation rules (trigger words, conditions such as "the library has documents") do that up front without a model call.
+- **Progressive disclosure:** the model starts with a small base system prompt and a one-line index of skills. It reads a skill (`read_skill_file`) before it can use the skill's tools.
 - **Layers:** `api → services → domain ← infra`, with `agent` depending only on domain ports. `container.py` is the only module that wires concrete classes.
 - **Stateless turns:** each question is answered on its own. No history reaches the model.
 - **Library, not workspaces:** PDFs are ingested ahead of time, independent of any chat, and every session searches all of the owner's `ready` documents.
@@ -94,7 +94,6 @@ sequenceDiagram
     UI->>API: POST /sessions/{id}/messages
     API->>Chat: stream(session, text)
     Chat->>Agent: astream([user message], context=owner_id)
-    Agent->>Agent: pre-activation: enable tools whose condition holds,<br/>pre-read skills whose trigger words are in the question
     loop until final answer or tool-call limit
         Agent->>LLM: base prompt + skill index, messages, unlocked tools
         LLM-->>Agent: tool call / tokens
@@ -104,7 +103,7 @@ sequenceDiagram
     end
     Agent-->>API: token … token
     API-->>UI: SSE stream
-    Chat->>Chat: persist turn_usage, auto-title
+    Chat->>Chat: persist turn_usage, title from first message
     API-->>UI: done
 ```
 
@@ -115,17 +114,14 @@ sequenceDiagram
 | Layer | Source | The model sees it |
 |---|---|---|
 | L0 base prompt | `agent/prompts/system.md` | Always, as the start of the system prompt |
-| Skill index | frontmatter of every `agent/skills/<name>/SKILL.md` | Always, appended to the base prompt: one line per skill (name, path, description) |
+| Skill index | frontmatter of every `agent/skills/<name>/SKILL.md` | Always, appended to the base prompt: one line per skill (name, path, description, tools) |
 | L1 skill | `agent/skills/<name>/SKILL.md` | After `read_skill_file("<name>/SKILL.md")` returns it as a tool result. Reading it unlocks the tools in its `allowed-tools` |
-| Pre-activation | `agent/skills/preactivation.yaml` | Never. Harness rules applied before the first model call |
-| Tools | local (`agent/tools.py`), MCP later | Only when unlocked by a read skill or enabled by a pre-activation condition |
+| Tools | local (`agent/tools.py`), MCP later | Only when unlocked by a read skill |
 
 ```mermaid
 stateDiagram-v2
     [*] --> Locked: tool registered at build
     Locked --> Unlocked: a skill listing it is read this turn
-    Locked --> Unlocked: pre-activation trigger word pre-read that skill
-    Locked --> Unlocked: pre-activation condition holds (e.g. library has documents)
     Unlocked --> [*]: turn ends (stateless)
 ```
 
@@ -204,10 +200,9 @@ erDiagram
 | # | Decision |
 | - | -------- |
 | D1 | One agent. LangChain `create_agent` runs only the tool loop; sessions, ingestion and streaming are plain services |
-| D2 | Ollama only, native on the host. Both model tiers (`fast` for titles, `smart` for answers) use the same weights, so Ollama never swaps models in 6 GB of VRAM |
+| D2 | Ollama only, native on the host. One chat model for everything, so Ollama never swaps models in 6 GB of VRAM |
 | D3 | PostgreSQL 18 + pgvector, native; HNSW cosine index; one embedding model per deployment, stored on each document and checked by `/ready` |
-| D4 | Progressive disclosure: base prompt + skill index → `SKILL.md` → tools. A tool is unlocked only by a read skill's `allowed-tools` or a pre-activation condition |
-| D5 | Deterministic first: pre-activation trigger words and conditions run before the first model call and save model calls |
+| D4 | Progressive disclosure: base prompt + skill index → `SKILL.md` → tools. A tool is unlocked only by a read skill's `allowed-tools` |
 | D6 | Stateless single-turn queries. No checkpointer; history is a later enhancement |
 | D7 | One document library per owner instead of per-session workspaces (below) |
 | D8 | Chunks never cross a page, and retrieval context comes from the same page only, so every citation has one correct page |
@@ -228,13 +223,12 @@ Planned enhancements and where each plugs in:
 | Enhancement | Extension point |
 |---|---|
 | MCP tools | MCP client tools passed to `build_agent` next to the local ones, unlocked by `allowed-tools` like any tool |
-| More skills | A new `agent/skills/<name>/SKILL.md` (+ optional pre-activation rule) |
-| New pre-activation condition | A named check in `container.py`, referenced as `when:` in `preactivation.yaml` |
+| More skills | A new `agent/skills/<name>/SKILL.md` |
 | Follow-ups + history | Postgres checkpointer + summarization middleware in `build_agent` |
 | Human approval for tools | Human-in-the-loop middleware (needs the checkpointer) |
 | Long-term memory | Memory tools + a skill that lists them + a `memories` table |
 | Web search | Search tools + a skill that lists them |
-| Agent profiles, auto routing | Routing middleware choosing a tier per call (today the tier is fixed) |
+| Agent profiles, auto routing | Routing middleware choosing a model per call (today there is one model) |
 | Other chat providers | New provider registered in `ModelFactory` |
 | Tracing + evals | Langfuse callback handler; eval datasets |
 | Real auth | Replace `DEFAULT_OWNER_ID` with a resolved user in `api/deps.py` |

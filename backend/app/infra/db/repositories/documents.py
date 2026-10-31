@@ -54,18 +54,6 @@ class SqlDocumentRepository:
         )
         return deleted is not None
 
-    async def has_ready(self, owner_id: str) -> bool:
-        return bool(
-            await self._db.scalar(
-                select(
-                    exists().where(
-                        DocumentRow.owner_id == owner_id,
-                        DocumentRow.status == DocumentStatus.READY,
-                    )
-                )
-            )
-        )
-
     async def mark_ready(
         self, document_id: uuid.UUID, page_count: int, chunks: list[ChunkIn]
     ) -> None:

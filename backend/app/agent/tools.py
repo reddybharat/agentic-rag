@@ -11,16 +11,10 @@ from app.agent.state import AgentContext
 from app.domain.models import ChunkHit
 
 READ_SKILL_FILE = "read_skill_file"
-RETRIEVE_DOCUMENTS = "retrieve_documents"
+RETRIEVE_FROM_DOCUMENTS = "retrieve_from_documents"
 RETRIEVE_LIMIT = 4
 CONTEXT_CHARS = 300
 NO_HITS = "No matching passages in the document library."
-# Sent with the passages, so the rules are present whenever there is something to cite.
-CITATION_RULES = (
-    "Citation rules: cite every fact from these passages as (filename, p. N), using the page in "
-    "its header; never guess a page. Quote exactly only when the wording matters. If passages "
-    "disagree, report both with their citations."
-)
 
 log = structlog.get_logger()
 
@@ -31,7 +25,7 @@ def make_read_skill_file(catalog: SkillCatalog) -> BaseTool:
 
     @tool(READ_SKILL_FILE)
     def read_skill_file(path: str) -> str:
-        """Read a skill listed under '## Skills', e.g. `answering-document-questions/SKILL.md`.
+        """Read a skill listed under '## Skills', e.g. `retrieving-from-documents/SKILL.md`.
         Read it before using the tools it describes."""
         text = files.get(path.strip())
         if text is None:
@@ -52,15 +46,17 @@ def _format(hit: ChunkHit) -> str:
     return "\n".join(lines)
 
 
-def make_retrieve_documents(
+def make_retrieve_from_documents(
     search: Callable[[str, str, int], Awaitable[list[ChunkHit]]],
 ) -> BaseTool:
-    @tool(RETRIEVE_DOCUMENTS)
-    async def retrieve_documents(query: str, runtime: ToolRuntime[AgentContext]) -> str:
-        """Search the user's document library. Returns passages with filename and page."""
+    @tool(RETRIEVE_FROM_DOCUMENTS)
+    async def retrieve_from_documents(query: str, runtime: ToolRuntime[AgentContext]) -> str:
+        """Similarity search over the user's document library: finds the stored passages closest
+        in meaning to the query. Pass the question's key terms. Returns passages with filename
+        and page."""
         hits = await search(runtime.context.owner_id, query, RETRIEVE_LIMIT)
         if not hits:
             return NO_HITS
-        return "\n\n".join([*(_format(hit) for hit in hits), CITATION_RULES])
+        return "\n\n".join(_format(hit) for hit in hits)
 
-    return retrieve_documents
+    return retrieve_from_documents

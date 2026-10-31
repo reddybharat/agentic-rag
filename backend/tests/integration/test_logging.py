@@ -56,8 +56,6 @@ def test_ingestion_and_chat_turn_log_the_key_events(
         "ingestion_started",
         "ingestion_done",
         "turn_started",
-        "tool_enabled",
-        "preactivate",
         "skill_read",
         "tool_start",
         "search_done",
@@ -69,7 +67,7 @@ def test_ingestion_and_chat_turn_log_the_key_events(
     assert done["pages"] == 4
     assert {"load_ms", "chunk_ms", "embed_ms", "store_ms", "total_ms"} <= done.keys()
     read = next(e for e in logs if e["event"] == "skill_read")
-    assert read["source"] == "preactivate"
+    assert read["source"] == "read_skill_file"
     assert all(DOC_QUESTION not in str(e.values()) for e in logs)
 
 

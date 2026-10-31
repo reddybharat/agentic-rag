@@ -2,52 +2,35 @@ from pathlib import Path
 
 import pytest
 
-from app.agent.skill_loader import INDEX_HEADER, load_skills
+from app.agent.skill_loader import INDEX_HEADER, INDEX_INTRO, load_skills
 
-ANSWERING = "answering-document-questions"
+RETRIEVING = "retrieving-from-documents"
 SKILL_MD = "---\nname: {name}\ndescription: d\nallowed-tools: {tools}\n---\nbody\n"
-PREACTIVATION = (
-    "max_skills: 1\n"
-    "skills:\n  - skill: s\n    triggers: [{triggers}]\n"
-    "tools:\n  - tool: t\n    when: {when}\n"
-)
 
 
-def _write(
-    root: Path, name: str = "s", tools: str = "t", triggers: str = "word", when: str = "always"
-) -> Path:
+def _write(root: Path, name: str = "s", tools: str = "t") -> Path:
     (root / "s").mkdir()
     (root / "s" / "SKILL.md").write_text(SKILL_MD.format(name=name, tools=tools))
-    (root / "preactivation.yaml").write_text(PREACTIVATION.format(triggers=triggers, when=when))
     return root
 
 
 def test_shipped_skills_are_indexed_under_the_base_prompt() -> None:
     catalog = load_skills()
 
-    assert ANSWERING in catalog.skills
-    assert catalog.skills[ANSWERING].allowed_tools == ("retrieve_documents",)
+    assert list(catalog.skills) == [RETRIEVING]
+    assert catalog.skills[RETRIEVING].allowed_tools == ("retrieve_from_documents",)
     prompt = catalog.system_prompt("Base prompt.")
-    assert prompt.startswith("Base prompt.\n\n" + INDEX_HEADER)
-    assert f"- {ANSWERING} (`{ANSWERING}/SKILL.md`):" in prompt
-    assert "## Workflow" not in prompt  # skill bodies stay out until read
-    assert [(r.name, r.when) for r in catalog.tool_rules] == [
-        ("retrieve_documents", "library_has_documents")
-    ]
-
-
-def test_preactivate_matches_whole_words() -> None:
-    catalog = load_skills()
-
-    assert [s.name for s in catalog.preactivate("What is the budget?")] == [ANSWERING]
-    assert catalog.preactivate("whatever happened") == []  # "what" only as a whole word
-    assert catalog.preactivate("hello there") == []
+    assert prompt.startswith(f"Base prompt.\n\n{INDEX_HEADER}\n{INDEX_INTRO}\n")
+    assert f"- {RETRIEVING} (`{RETRIEVING}/SKILL.md`):" in prompt
+    assert prompt.rstrip().endswith("Tools: retrieve_from_documents")
+    assert "## How to answer" not in prompt  # skill bodies stay out until read
 
 
 def test_valid_minimal_skill_loads(tmp_path: Path) -> None:
     catalog = load_skills(_write(tmp_path))
 
     assert [s.path for s in catalog.skills.values()] == ["s/SKILL.md"]
+    assert catalog.system_prompt("B").endswith("- s (`s/SKILL.md`): d Tools: t\n")
 
 
 @pytest.mark.parametrize(
@@ -55,8 +38,6 @@ def test_valid_minimal_skill_loads(tmp_path: Path) -> None:
     [
         ({"name": "other"}, "must equal folder name"),
         ({"tools": "''"}, "allowed-tools"),
-        ({"triggers": "'two words'"}, "single words"),
-        ({"when": "[a]"}, "string 'tool' and 'when'"),
     ],
 )
 def test_invalid_files_are_rejected(tmp_path: Path, kwargs: dict[str, str], error: str) -> None:
@@ -69,4 +50,9 @@ def test_missing_frontmatter_is_rejected(tmp_path: Path) -> None:
     (tmp_path / "s" / "SKILL.md").write_text("no frontmatter")
 
     with pytest.raises(ValueError, match="frontmatter"):
+        load_skills(tmp_path)
+
+
+def test_empty_skills_dir_is_rejected(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match=r"no \*/SKILL.md"):
         load_skills(tmp_path)

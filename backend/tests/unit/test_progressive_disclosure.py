@@ -1,47 +1,35 @@
 import uuid
 from typing import Any
 
-import pytest
 from langchain.agents.middleware.types import ModelRequest, ModelResponse, ToolCallRequest
 from langchain.tools import ToolRuntime
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
-from langgraph.runtime import Runtime
 from langgraph.types import Command
 
-from app.agent.middleware.progressive_disclosure import Condition, ProgressiveDisclosure
+from app.agent.middleware.progressive_disclosure import ProgressiveDisclosure
 from app.agent.skill_loader import load_skills
 from app.agent.state import AgentContext
 from app.agent.tools import (
-    CITATION_RULES,
     NO_HITS,
     READ_SKILL_FILE,
-    RETRIEVE_DOCUMENTS,
+    RETRIEVE_FROM_DOCUMENTS,
     make_read_skill_file,
-    make_retrieve_documents,
+    make_retrieve_from_documents,
 )
-from app.container import LIBRARY_HAS_DOCUMENTS
 from app.domain.models import ChunkHit
 
 CATALOG = load_skills()
-ANSWERING = CATALOG.skills["answering-document-questions"]
-RUNTIME = Runtime(context=AgentContext(owner_id="alice"))
-BOTH = [READ_SKILL_FILE, RETRIEVE_DOCUMENTS]
+RETRIEVING = CATALOG.skills["retrieving-from-documents"]
+CONTEXT = AgentContext(owner_id="alice")
+BOTH = [READ_SKILL_FILE, RETRIEVE_FROM_DOCUMENTS]
 
 
 async def _no_hits(owner_id: str, query: str, limit: int) -> list[ChunkHit]:
     return []
 
 
-TOOLS = [make_read_skill_file(CATALOG), make_retrieve_documents(_no_hits)]
-
-
-def _middleware(library_has_documents: bool = False) -> ProgressiveDisclosure:
-    async def check(owner_id: str) -> bool:
-        return library_has_documents
-
-    conditions: dict[str, Condition] = {LIBRARY_HAS_DOCUMENTS: check}
-    return ProgressiveDisclosure(CATALOG, conditions)
+TOOLS = [make_read_skill_file(CATALOG), make_retrieve_from_documents(_no_hits)]
 
 
 def _read(text: str) -> ToolMessage:
@@ -63,40 +51,17 @@ async def _visible_tools(state: dict[str, Any]) -> list[str]:
         tools=list(TOOLS),
         state=state,  # type: ignore[arg-type]
     )
-    await _middleware().awrap_model_call(request, handler)
+    await ProgressiveDisclosure(CATALOG).awrap_model_call(request, handler)
     return [t.name for t in seen[0].tools]  # type: ignore[union-attr]
 
 
 async def test_tool_is_hidden_until_a_skill_listing_it_is_read() -> None:
     assert await _visible_tools({"messages": [HumanMessage("q")]}) == [READ_SKILL_FILE]
-    assert await _visible_tools({"messages": [HumanMessage("q"), _read(ANSWERING.text)]}) == BOTH
+    assert await _visible_tools({"messages": [HumanMessage("q"), _read(RETRIEVING.text)]}) == BOTH
 
 
 async def test_unknown_file_text_unlocks_nothing() -> None:
     assert await _visible_tools({"messages": [_read("Unknown file 'x'.")]}) == [READ_SKILL_FILE]
-
-
-async def test_condition_enables_tool_without_a_skill() -> None:
-    with_docs = await _middleware(library_has_documents=True).abefore_agent(
-        {"messages": [HumanMessage("hello")]}, RUNTIME
-    )
-    empty = await _middleware().abefore_agent({"messages": [HumanMessage("hello")]}, RUNTIME)
-
-    assert with_docs == {"enabled_tools": [RETRIEVE_DOCUMENTS]}
-    assert empty is None
-    assert await _visible_tools({"messages": [HumanMessage("hello")], **with_docs}) == BOTH
-
-
-async def test_trigger_word_preloads_skill_as_a_read_round() -> None:
-    update = await _middleware().abefore_agent(
-        {"messages": [HumanMessage("What is the budget?")]}, RUNTIME
-    )
-
-    assert update is not None
-    call, result = update["messages"]
-    assert call.tool_calls[0]["args"] == {"path": ANSWERING.path}
-    assert result.content == ANSWERING.text
-    assert await _visible_tools({"messages": [HumanMessage("q"), *update["messages"]]}) == BOTH
 
 
 async def test_locked_tool_call_is_refused_without_running() -> None:
@@ -106,8 +71,8 @@ async def test_locked_tool_call_is_refused_without_running() -> None:
         ran.append(request.tool_call["name"])
         return ToolMessage("ran", tool_call_id="1")
 
-    call = {"name": RETRIEVE_DOCUMENTS, "args": {"query": "q"}, "id": "1", "type": "tool_call"}
-    result = await _middleware().awrap_tool_call(
+    call = {"name": RETRIEVE_FROM_DOCUMENTS, "args": {"query": "q"}, "id": "1", "type": "tool_call"}
+    result = await ProgressiveDisclosure(CATALOG).awrap_tool_call(
         ToolCallRequest(
             tool_call=call,  # type: ignore[arg-type]
             tool=TOOLS[1],
@@ -123,12 +88,7 @@ async def test_locked_tool_call_is_refused_without_running() -> None:
     assert "locked" in str(result.content)
 
 
-def test_unknown_condition_is_rejected_at_build() -> None:
-    with pytest.raises(ValueError, match="unknown conditions"):
-        ProgressiveDisclosure(CATALOG, {})
-
-
-async def test_retrieve_documents_sends_citation_rules_with_passages_only() -> None:
+async def test_citation_rules_live_in_the_skill_and_results_are_passages_only() -> None:
     hit = ChunkHit(
         chunk_id=uuid.uuid4(),
         filename="report.pdf",
@@ -143,7 +103,7 @@ async def test_retrieve_documents_sends_citation_rules_with_passages_only() -> N
 
     runtime: ToolRuntime[AgentContext] = ToolRuntime(
         state={"messages": []},
-        context=RUNTIME.context,
+        context=CONTEXT,
         config={},
         stream_writer=lambda _: None,
         tool_call_id="1",
@@ -151,16 +111,16 @@ async def test_retrieve_documents_sends_citation_rules_with_passages_only() -> N
         tools=[],
     )
     args = {"query": "budget", "runtime": runtime}
-    found = await make_retrieve_documents(one_hit).ainvoke(args)
+    found = await make_retrieve_from_documents(one_hit).ainvoke(args)
     empty = await TOOLS[1].ainvoke(args)
 
-    assert found.startswith("[report.pdf, page 3]")
-    assert found.endswith(CITATION_RULES)
+    assert found == f"[report.pdf, page 3] (chunk {hit.chunk_id})\nBudget 4.2 M."
     assert empty == NO_HITS
+    assert "Cite every fact as (filename, p. N)" in RETRIEVING.text
 
 
 async def test_read_skill_file_returns_the_file_or_lists_valid_paths() -> None:
     read_skill_file = TOOLS[0]
 
-    assert await read_skill_file.ainvoke({"path": ANSWERING.path}) == ANSWERING.text
+    assert await read_skill_file.ainvoke({"path": RETRIEVING.path}) == RETRIEVING.text
     assert "Available:" in await read_skill_file.ainvoke({"path": "nope.md"})

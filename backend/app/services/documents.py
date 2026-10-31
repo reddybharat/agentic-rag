@@ -137,10 +137,6 @@ class DocumentService:
             **timings,
         )
 
-    async def has_ready(self, owner_id: str) -> bool:
-        async with self._uow() as uow:
-            return await uow.documents.has_ready(owner_id)
-
     async def search(self, owner_id: str, query: str, limit: int) -> list[ChunkHit]:
         started = time.perf_counter()
         embedding = await self._embedder.embed_query(query)

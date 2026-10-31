@@ -1,15 +1,8 @@
-# Chat model catalog. Exactly one model per tier; selection by tier is deterministic.
+# Chat model catalog: exactly one model, used for every answer.
 # `options` are passed to the provider's chat model (ChatOllama fields for `ollama`).
 models:
-  - id: qwen3-4b-fast
+  - id: qwen3-4b
     provider: ollama
     model_name: qwen3:4b-instruct
-    tier: fast            # titles, classification
-    supports_tools: true
-    options: { reasoning: false, num_predict: 256 }
-  - id: qwen3-4b-smart
-    provider: ollama
-    model_name: qwen3:4b-instruct
-    tier: smart           # answers
     supports_tools: true
     options: { reasoning: false, num_ctx: 8192 }
