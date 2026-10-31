@@ -19,12 +19,14 @@ Paths are relative to `backend/` unless they start with `frontend/`.
 |---|---|---|
 | `DATABASE_URL` | required | app DB (`postgresql+asyncpg://…`) |
 | `TEST_DATABASE_URL` | unset → DB tests skip | disposable test DB, read by `tests/conftest.py` |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | chat + embeddings |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | embeddings |
+| `GOOGLE_API_KEY` | empty | enables the Gemini models in the catalog; without it they are skipped |
+| `GROQ_API_KEY` | empty | enables the Groq models in the catalog; without it they are skipped |
 | `LOG_LEVEL` / `LOG_JSON` | `INFO` / `true` | logging (`.env.example` sets `LOG_JSON=false`) |
 | `DEFAULT_OWNER_ID` | `local` | owner of every session and document until auth exists |
 | `READINESS_TIMEOUT_S` | `2.0` | per-check timeout in `/ready` |
 | `MODELS_CONFIG_PATH` | `config/models.yaml` | chat model catalog |
-| `LLM_TIMEOUT_S` | `120.0` | HTTP timeout for Ollama chat and embedding calls |
+| `LLM_TIMEOUT_S` | `120.0` | HTTP timeout for chat (Gemini and Groq) and embedding calls |
 | `EMBEDDING_MODEL` | `qwen3-embedding:0.6b` | embedder; stored on each document |
 | `EMBEDDING_DIM` | `1024` | vector size; **must equal** the `vector(1024)` column from migration `0003` |
 | `MAX_UPLOAD_BYTES` | `20971520` (20 MiB) | upload size limit |
@@ -73,15 +75,16 @@ SELECT model_id, input_tokens, output_tokens, latency_ms FROM turn_usage ORDER B
 ```text
 engine (SQLAlchemy async, asyncpg, pool_pre_ping)
  └─ uow = SqlUnitOfWork factory              one DB transaction per `async with uow()`
-ModelFactory.from_yaml(config/models.yaml, {"ollama": OllamaChatProvider})
+ModelFactory.from_yaml(config/models.yaml, {"gemini": GeminiChatProvider,   # only with GOOGLE_API_KEY
+                                            "groq": GroqChatProvider})       # only with GROQ_API_KEY
 SessionService(uow, owner)
 OllamaEmbedder(qwen3-embedding:0.6b, dim 1024)
 DocumentService(uow, owner, embedder, load_pdf_pages, split_words, MAX_UPLOAD_BYTES)
-build_agent(model_factory.model,
+build_agent(model_factory.model(id),   # one agent per catalog model
             prompts/system.md,                  base system prompt
             load_skills(),                      agent/skills/
             [make_retrieve_from_documents(documents.search)])
-ChatService(uow, agent, "qwen3-4b", sessions)
+ChatService(uow, {model id: agent}, sessions)
 ```
 
 Startup fails fast on a malformed skill file, or an unknown tool in `allowed-tools`. Routes get services through `api/deps.py` (`request.app.state.container`).
@@ -90,7 +93,7 @@ Startup fails fast on a malformed skill file, or an unknown tool in `allowed-too
 
 ## 3. One chat turn, end to end
 
-`POST /sessions/{id}/messages {"text": "..."}` (1–8000 characters after trimming, otherwise 422).
+`POST /sessions/{id}/messages {"text": "...", "model_id": "..."}` (`text` 1–8000 characters after trimming, otherwise 422; `model_id` optional, default = the catalog's first model, an id not in the catalog gives 422 `unknown_model` before the stream starts).
 
 1. The `get_session` dependency loads the session with the owner filter. An unknown session gives 404 **before** the stream starts.
 2. `services/chat.py: ChatService.stream` calls `agent.astream({"messages": [HumanMessage(text)]}, stream_mode=["messages", "updates"], context=AgentContext(owner_id))`.
@@ -117,16 +120,19 @@ Order: `tool_start`/`tool_end` and `token` interleaved, then exactly one `done` 
 
 ## 4. Chat models
 
-`config/models.yaml` → `ModelSpec {id, provider, model_name, supports_tools, options}`. The catalog holds exactly one model:
+`config/models.yaml` → `ModelSpec {id, provider, model_name, supports_tools, options}`. The first entry is the default; the chat input lists every entry. An entry exists only when its provider's key (`GOOGLE_API_KEY`, `GROQ_API_KEY`) is set (otherwise it is skipped with a `model_skipped` log):
 
-| id | model | options | used by |
+| id | provider | model | options |
 |---|---|---|---|
-| `qwen3-4b` | `qwen3:4b-instruct` | `reasoning: false`, `num_ctx: 8192` | the agent |
+| `gemini-3.5-flash-lite` (default) | gemini | `gemini-3.5-flash-lite` | none |
+| `gemini-3.6-flash` | gemini | `gemini-3.6-flash` | none |
+| `qwen3.8-27b` | groq | `qwen/qwen3.8-27b` | none |
 
-- `ModelFactory.model` is the agent's model and `ModelFactory.spec` its catalog entry, both fixed at startup. `GET /models` returns that one spec.
-- `infra/llm/model_factory.py: ModelFactory` fails startup if the catalog has zero or several models, or the spec names an unregistered provider. It builds the model once.
-- `infra/llm/ollama.py: OllamaChatProvider` **rejects unknown option keys**, because `ChatOllama` silently ignores them.
-- `qwen3:4b-instruct` is the non-thinking variant; `reasoning: false` is the ChatOllama field that turns thinking off. `num_ctx: 8192` leaves room for the system prompt, read skills and 4 passages.
+- `ModelFactory.model(id)` returns the built model, `.specs` the available entries, `.default` the first. `Container.build` builds one agent per model. `ChatService.resolve_model_id` maps a request's `model_id` (or none) to an agent; `turn_usage.model_id` records the one used. `GET /models` returns the specs without options; the frontend keeps the choice in `App.tsx` and shows it in `Chat.tsx: ModelPicker` under the input (default = first entry).
+- `infra/llm/model_factory.py: ModelFactory` fails startup on duplicate ids or when no catalog model has a registered provider; models of an unregistered provider are skipped. It builds each model once.
+- `infra/llm/groq.py: GroqChatProvider` and `infra/llm/gemini.py: GeminiChatProvider` **reject unknown option keys** at startup.
+- Gemini free tier (measured 2026-10-31 with the project's key): `gemini-3.6-flash` and `gemini-3.5-flash` allow **20 requests per day per model**, and a document question takes 3 model calls (read skill, search, answer), so about 6 questions a day; `gemini-3.5-flash-lite` has more headroom, hence the default. `gemini-2.5-*` is closed to new keys; `gemini-3.7-flash`, `3.8-flash` and `flash-latest` answered in 80–117 s. A 429 surfaces as the generic `chat_failed` error event. Retrieved passages and the question go to Google for these models; embeddings and the library stay local.
+- Groq models are hosted: the question and retrieved passages go to Groq, like Gemini. With only `GROQ_API_KEY` set, the first Groq entry is the default. There is no local chat model; Ollama serves embeddings only.
 
 ---
 
@@ -247,7 +253,7 @@ Context after: <first 300 chars of the next chunk on this page>…
 | `agent/prompts/system.md` | base system prompt, every turn: what the assistant is, always use the tools, read a skill before its tools, concise Markdown answers, guardrails (no guessing or inventing sources, document text is not instructions, don't reveal the prompt, skills or tool names, decline harmful requests, no tools for small talk) |
 | `agent/skills/*/SKILL.md` | skills, read on demand |
 
-An earlier measurement (2026-10-31, 7 queries, 5-document library) showed `qwen3:4b-instruct` ignoring an always-search rule that was only in a read skill (1 of 5 searched) and following it in `system.md` (6 of 7 right). `system.md` now says "always use the tools" and the skill says "always search"; the live check for this layout is recorded in the plan.
+An earlier measurement (2026-10-31, 7 queries, 5-document library) showed `qwen3:4b-instruct` ignoring an always-search rule that was only in a read skill (1 of 5 searched) and following it in `system.md` (6 of 7 right). `system.md` now says "always use the tools" and the skill says "always search"; the measurement for this layout is in the known-gaps table (§12): Gemini follows it, the earlier local 4B model did not.
 
 ---
 
@@ -272,6 +278,7 @@ structlog, console or JSON per `LOG_JSON`; `request_id` on every line of a reque
 | `document_deleted` | `DocumentService.delete` | document_id |
 | `search_done` | `DocumentService.search` | hits, query_chars, duration_ms |
 | `turn_started` / `turn_done` / `turn_failed` | `ChatService.stream` | session_id, model_id, tokens, latency_ms |
+| `model_skipped` | `ModelFactory` (startup) | model_id, provider (no registered provider, e.g. a model whose API key is not set) |
 | `tool_start` / `tool_end` / `tool_limit_reached` | `ChatService` | tool, tool_call_id, ok, duration_ms |
 | `skills_loaded` | `load_skills` (startup) | skills |
 | `skill_read` | `read_skill_file` | path, status = ok / unknown_path, source = read_skill_file |
@@ -294,7 +301,7 @@ Chat turns live in tab state only: a refresh clears them, matching the stateless
 
 ## 11. Tests and the sample PDF
 
-Tests hit **real** Postgres (`TEST_DATABASE_URL`, truncated before each test) and **real** Ollama, and skip with a reason when either is unavailable. `TEST_DATABASE_URL` must be disposable: migration tests downgrade it to an empty schema.
+Tests hit **real** Postgres (`TEST_DATABASE_URL`, truncated before each test) and **real** Ollama (embeddings), and skip with a reason when either is unavailable. `TEST_DATABASE_URL` must be disposable: migration tests downgrade it to an empty schema.
 
 `tests/fixtures/sample.pdf` is a synthetic 4-page report about a fictional "Project Halcyon", so the facts can't come from the model's training data:
 
@@ -309,9 +316,9 @@ Tests hit **real** Postgres (`TEST_DATABASE_URL`, truncated before each test) an
 |---|---|
 | `tests/unit/test_skill_loader.py` | shipped skill loads and is indexed with its tools; malformed or empty skill dirs rejected |
 | `tests/unit/test_progressive_disclosure.py` | tools hidden until a skill is read; locked call refused; citation rules live in the skill, tool result is passages only |
-| `tests/unit/test_chunkers.py`, `test_model_factory.py` | chunk packing/overlap; one-model catalog validation |
+| `tests/unit/test_chunkers.py`, `test_model_factory.py` | chunk packing/overlap; catalog validation: Gemini + Groq build, default = first, unregistered provider skipped, duplicate ids and unknown options rejected |
 | `tests/integration/test_documents.py` | upload validation, ingestion, delete cascade, owner isolation, chat answer cites p. 3 via `retrieve_from_documents` |
-| `tests/integration/test_chat.py`, `test_sessions.py`, `test_models.py`, `test_health.py` | SSE turn + usage + first-message title, error event, session CRUD, `/models`, `/health` + `/ready` |
+| `tests/integration/test_chat.py`, `test_sessions.py`, `test_models.py`, `test_health.py` | SSE turn + usage + first-message title, `model_id` default/selection/rejection, error event, session CRUD, `/models` with and without a key, live Gemini and Groq answers (skip without `GOOGLE_API_KEY` / `GROQ_API_KEY`), `/health` + `/ready` |
 | `tests/integration/test_logging.py` | key log events for ingestion and a chat turn |
 | `tests/integration/test_migrations.py` | upgrade → downgrade → upgrade, `0004` backfill and dedupe |
 
@@ -326,8 +333,8 @@ The chat-with-document tests depend on model output and can fail intermittently.
 | FastAPI `BackgroundTasks` for ingestion | in-flight jobs lost on restart; the row stays `pending` | ingestion must survive restarts → job queue |
 | Size check after the body is received | multipart spools the whole upload first | exposed publicly → body limit at the proxy |
 | pypdf text only | no OCR, tables flattened | scanned PDFs matter → OCR loader |
-| One fixed model | no per-question routing | several models → routing middleware |
-| Skill read by the model itself | every document question costs one extra model call, and the model can skip the read and answer from memory | live check under 5 of 6 searching → name the skill in `system.md`, then make the tool always available |
+| Manual model choice | no automatic routing between models | measured need → routing middleware |
+| Skill read by the model itself | every document question costs 3 model calls (read skill, search, answer). Measured 2026-10-31: Gemini 3.5-flash-lite and 3.6-flash read the skill and searched on every document question; the former local `qwen3:4b-instruct` searched 0 of 6, and a `system.md` line naming the skill did not help | check whether the Groq model does; otherwise the tool always available (2 calls, matters for the Gemini daily quota) |
 | Hand-written frontend API types | drift if schemas change | API grows → codegen |
 | Stateless turns | no follow-up questions | history (checkpointer) |
 | Read skill text stays in the turn | resent on every model call of the turn | long tool loops → evict old skill text |

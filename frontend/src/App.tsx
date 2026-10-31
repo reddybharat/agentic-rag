@@ -18,7 +18,7 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
-import { api, type LibraryDocument, type Session } from '@/lib/api'
+import { api, type LibraryDocument, type ModelInfo, type Session } from '@/lib/api'
 
 const POLL_MS = 2000
 
@@ -30,6 +30,8 @@ export default function App() {
   const [active, setActive] = useState<string | null>(null)
   const [view, setView] = useState<'chat' | 'library'>('chat')
   const [turns, setTurns] = useState<Record<string, Turn[]>>({})
+  const [models, setModels] = useState<ModelInfo[]>([])
+  const [modelId, setModelId] = useState('')
 
   const refreshSessions = useCallback(
     () => api.listSessions().then(setSessions).catch((e: unknown) => toast.error(errorText(e))),
@@ -43,6 +45,13 @@ export default function App() {
   useEffect(() => {
     void refreshSessions()
     void refreshDocuments()
+    api
+      .listModels()
+      .then((list) => {
+        setModels(list)
+        setModelId(list[0]?.id ?? '')
+      })
+      .catch((e: unknown) => toast.error(errorText(e)))
   }, [refreshSessions, refreshDocuments])
 
   const anyPending = documents.some((d) => d.status === 'pending')
@@ -146,6 +155,9 @@ export default function App() {
               turns={turns[active] ?? []}
               onTurns={(fn) => setTurns((all) => ({ ...all, [active]: fn(all[active] ?? []) }))}
               libraryEmpty={documents.length === 0}
+              models={models}
+              modelId={modelId}
+              onModelChange={setModelId}
               onTurnEnded={() => void refreshSessions()}
             />
           ) : (

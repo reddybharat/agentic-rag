@@ -41,9 +41,14 @@ def test_upload_rejections_and_delete_are_logged_without_content(
 
 
 def test_ingestion_and_chat_turn_log_the_key_events(
-    migrated_database_url: str, ollama_base_url: str
+    migrated_database_url: str, ollama_base_url: str, google_api_key: str
 ) -> None:
-    settings = Settings(database_url=migrated_database_url, ollama_base_url=ollama_base_url)
+    # Gemini answers: the local 4B model does not reliably read a skill before searching.
+    settings = Settings(
+        database_url=migrated_database_url,
+        ollama_base_url=ollama_base_url,
+        google_api_key=google_api_key,
+    )
     app = create_app(settings)
     with capture_logs() as logs, TestClient(app) as client:
         client.post("/documents", files={"file": ("sample.pdf", SAMPLE_PDF.read_bytes(), PDF_TYPE)})

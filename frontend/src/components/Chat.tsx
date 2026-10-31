@@ -1,11 +1,18 @@
-import { ChevronRight, Send } from 'lucide-react'
+import { ChevronDown, ChevronRight, Send } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import Markdown from 'react-markdown'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Textarea } from '@/components/ui/textarea'
-import { streamMessage } from '@/lib/api'
+import { type ModelInfo, streamMessage } from '@/lib/api'
 
 const MAX_MESSAGE_CHARS = 8000
 // Skills reach the agent as read_skill_file calls (pre-reads included) with args.path = '<name>/SKILL.md'.
@@ -32,10 +39,22 @@ interface Props {
   turns: Turn[]
   onTurns: (update: (turns: Turn[]) => Turn[]) => void
   libraryEmpty: boolean
+  models: ModelInfo[]
+  modelId: string
+  onModelChange: (id: string) => void
   onTurnEnded: () => void
 }
 
-export function Chat({ sessionId, turns, onTurns, libraryEmpty, onTurnEnded }: Props) {
+export function Chat({
+  sessionId,
+  turns,
+  onTurns,
+  libraryEmpty,
+  models,
+  modelId,
+  onModelChange,
+  onTurnEnded,
+}: Props) {
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const bottom = useRef<HTMLDivElement>(null)
@@ -46,7 +65,7 @@ export function Chat({ sessionId, turns, onTurns, libraryEmpty, onTurnEnded }: P
 
   async function send() {
     const text = input.trim()
-    if (!text || busy) return
+    if (!text || busy || !modelId) return
     setInput('')
     setBusy(true)
     const answerId = crypto.randomUUID()
@@ -58,7 +77,7 @@ export function Chat({ sessionId, turns, onTurns, libraryEmpty, onTurnEnded }: P
     const patch = (fn: (turn: Turn) => Turn) =>
       onTurns((t) => t.map((x) => (x.id === answerId ? fn(x) : x)))
     try {
-      for await (const e of streamMessage(sessionId, text)) {
+      for await (const e of streamMessage(sessionId, text, modelId)) {
         if (e.type === 'token') patch((x) => ({ ...x, text: x.text + e.text }))
         else if (e.type === 'tool_start')
           patch((x) => ({
@@ -97,32 +116,83 @@ export function Chat({ sessionId, turns, onTurns, libraryEmpty, onTurnEnded }: P
       </div>
       <div className="border-t p-4">
         <form
-          className="mx-auto flex max-w-3xl items-end gap-2"
+          className="mx-auto flex max-w-3xl flex-col gap-2"
           onSubmit={(e) => {
             e.preventDefault()
             void send()
           }}
         >
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                void send()
-              }
-            }}
-            placeholder="Ask about your documents…"
-            maxLength={MAX_MESSAGE_CHARS}
-            className="max-h-40 min-h-10 resize-none"
-            rows={1}
-          />
-          <Button type="submit" size="icon" disabled={busy || !input.trim()} aria-label="Send">
-            <Send />
-          </Button>
+          <div className="flex items-end gap-2">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  void send()
+                }
+              }}
+              placeholder="Ask about your documents…"
+              maxLength={MAX_MESSAGE_CHARS}
+              className="max-h-40 min-h-10 resize-none"
+              rows={1}
+            />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={busy || !modelId || !input.trim()}
+              aria-label="Send"
+            >
+              <Send />
+            </Button>
+          </div>
+          <ModelPicker models={models} modelId={modelId} onChange={onModelChange} disabled={busy} />
         </form>
       </div>
     </div>
+  )
+}
+
+function ModelPicker({
+  models,
+  modelId,
+  onChange,
+  disabled,
+}: {
+  models: ModelInfo[]
+  modelId: string
+  onChange: (id: string) => void
+  disabled: boolean
+}) {
+  if (models.length === 0) return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="self-start text-xs text-muted-foreground"
+          disabled={disabled}
+          aria-label="Choose model"
+        >
+          {modelId}
+          <ChevronDown />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuRadioGroup value={modelId} onValueChange={onChange}>
+          {models.map((m) => (
+            <DropdownMenuRadioItem key={m.id} value={m.id}>
+              {m.id}
+              <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                {m.provider === 'groq' ? 'Groq' : 'Google'}
+              </span>
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

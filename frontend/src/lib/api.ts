@@ -9,6 +9,13 @@ export interface Session {
   updated_at: string
 }
 
+export interface ModelInfo {
+  id: string
+  provider: string
+  model_name: string
+  supports_tools: boolean
+}
+
 export type DocumentStatus = 'pending' | 'ready' | 'failed'
 
 export interface LibraryDocument {
@@ -52,6 +59,8 @@ export const api = {
   renameSession: (id: string, title: string) =>
     request<Session>(`/sessions/${id}`, json('PATCH', { title })),
   deleteSession: (id: string) => request<void>(`/sessions/${id}`, { method: 'DELETE' }),
+  // The first model is the backend's default.
+  listModels: () => request<ModelInfo[]>('/models'),
   listDocuments: () => request<LibraryDocument[]>('/documents'),
   uploadDocument: (file: File) => {
     const form = new FormData()
@@ -62,8 +71,15 @@ export const api = {
 }
 
 /** POSTs a message and yields the SSE events (EventSource cannot POST). */
-export async function* streamMessage(sessionId: string, text: string): AsyncGenerator<ChatEvent> {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}/messages`, json('POST', { text }))
+export async function* streamMessage(
+  sessionId: string,
+  text: string,
+  modelId: string,
+): AsyncGenerator<ChatEvent> {
+  const res = await fetch(
+    `${API_URL}/sessions/${sessionId}/messages`,
+    json('POST', { text, model_id: modelId }),
+  )
   if (!res.ok || !res.body) throw new ApiError(`Request failed (${res.status})`)
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
   let buffer = ''

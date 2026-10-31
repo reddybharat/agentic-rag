@@ -1,5 +1,5 @@
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from typing import Any, cast
 
 import structlog
@@ -13,6 +13,7 @@ from langchain_core.messages import (
 
 from app.agent.agent_builder import Agent
 from app.agent.state import AgentContext
+from app.core.errors import UnknownModelError
 from app.domain.models import (
     ChatEvent,
     DoneEvent,
@@ -38,25 +39,32 @@ class ChatService:
     def __init__(
         self,
         uow: Callable[[], UnitOfWork],
-        agent: Agent,
-        model_id: str,
+        agents: Mapping[str, Agent],
         sessions: SessionService,
     ) -> None:
         self._uow = uow
-        self._agent = agent
-        self._model_id = model_id
+        self._agents = agents
+        self._default_model_id = next(iter(agents))
         self._sessions = sessions
 
-    async def stream(self, session: Session, text: str) -> AsyncIterator[ChatEvent]:
+    def resolve_model_id(self, model_id: str | None) -> str:
+        """The requested model, or the default (the catalog's first); unknown ids are rejected."""
+        if model_id is None:
+            return self._default_model_id
+        if model_id not in self._agents:
+            raise UnknownModelError(f"Unknown model {model_id!r}")
+        return model_id
+
+    async def stream(self, session: Session, text: str, model_id: str) -> AsyncIterator[ChatEvent]:
         started = time.perf_counter()
         turn_log = log.bind(session_id=str(session.id), owner_id=session.owner_id)
-        turn_log.info("turn_started", model_id=self._model_id, message_chars=len(text))
+        turn_log.info("turn_started", model_id=model_id, message_chars=len(text))
         tool_started: dict[str, float] = {}
         input_tokens = output_tokens = 0
         try:
             # "messages" streams model tokens; "updates" yields each finished node's messages,
             # which is where complete tool calls and tool results appear.
-            async for mode, payload in self._agent.astream(
+            async for mode, payload in self._agents[model_id].astream(
                 {"messages": [HumanMessage(text)]},
                 stream_mode=["messages", "updates"],
                 context=AgentContext(owner_id=session.owner_id),
@@ -82,7 +90,7 @@ class ChatService:
 
         usage = TurnUsage(
             session_id=session.id,
-            model_id=self._model_id,
+            model_id=model_id,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             latency_ms=round((time.perf_counter() - started) * MS_PER_S),

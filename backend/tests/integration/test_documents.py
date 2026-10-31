@@ -75,10 +75,14 @@ def test_unreadable_pdf_is_marked_failed(migrated_database_url: str) -> None:
 
 
 def test_chat_answers_from_document_with_page_citation(
-    migrated_database_url: str, ollama_base_url: str
+    migrated_database_url: str, ollama_base_url: str, google_api_key: str
 ) -> None:
+    # Gemini answers: the local 4B model does not reliably read a skill before searching.
     settings = Settings(
-        database_url=migrated_database_url, ollama_base_url=ollama_base_url, log_json=False
+        database_url=migrated_database_url,
+        ollama_base_url=ollama_base_url,
+        google_api_key=google_api_key,
+        log_json=False,
     )
     with TestClient(create_app(settings)) as client:
         client.post(

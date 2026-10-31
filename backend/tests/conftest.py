@@ -20,6 +20,36 @@ class _TestSettings(BaseSettings):
 
     test_database_url: str | None = None
     ollama_base_url: str = "http://localhost:11434"
+    google_api_key: str | None = None
+    groq_api_key: str | None = None
+
+
+# Read once at import, before the autouse fixture below overrides the variables for every test.
+REAL_GOOGLE_API_KEY = _TestSettings().google_api_key
+REAL_GROQ_API_KEY = _TestSettings().groq_api_key
+FAKE_GROQ_API_KEY = "not-a-real-key"  # building a Groq client makes no network call
+
+
+@pytest.fixture(autouse=True)
+def _no_real_chat_keys_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Gemini is skipped and Groq gets a fake key, so the app starts with a Groq default model
+    and tests never spend quota or leave the machine unless they ask for a real key fixture."""
+    monkeypatch.setenv("GOOGLE_API_KEY", "")
+    monkeypatch.setenv("GROQ_API_KEY", FAKE_GROQ_API_KEY)
+
+
+@pytest.fixture
+def google_api_key() -> str:
+    if not REAL_GOOGLE_API_KEY:
+        pytest.skip("GOOGLE_API_KEY not set")
+    return REAL_GOOGLE_API_KEY
+
+
+@pytest.fixture
+def groq_api_key() -> str:
+    if not REAL_GROQ_API_KEY:
+        pytest.skip("GROQ_API_KEY not set")
+    return REAL_GROQ_API_KEY
 
 
 @pytest.fixture

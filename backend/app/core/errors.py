@@ -31,6 +31,11 @@ class PayloadTooLargeError(AppError):
     code = "payload_too_large"
 
 
+class UnknownModelError(AppError):
+    status_code = 422
+    code = "unknown_model"
+
+
 class InvalidDocumentError(AppError):
     status_code = 422
     code = "invalid_document"

@@ -1,8 +1,8 @@
 # Agentic RAG
 
-Chat with your PDFs, locally. One agent on Ollama (`qwen3:4b-instruct`) answers from a document library in Postgres + pgvector and cites pages. The agent starts with a small base prompt and an index of skills, and reads a skill before it can use that skill's tools.
+Chat with your PDFs, locally. One agent on a Gemini free-tier or Groq model (picked in the chat input) answers from a document library in Postgres + pgvector and cites pages. The agent starts with a small base prompt and an index of skills, and reads a skill before it can use that skill's tools.
 
-**Stack:** FastAPI · LangChain/LangGraph · Ollama (`qwen3:4b-instruct`, `qwen3-embedding:0.6b`) · PostgreSQL 18 + pgvector · Alembic · uv · React + Vite + Tailwind + shadcn/ui
+**Stack:** FastAPI · LangChain/LangGraph · Gemini (`gemini-3.5-flash-lite` default) · Groq (`qwen/qwen3.8-27b`) · Ollama (`qwen3-embedding:0.6b`) · PostgreSQL 18 + pgvector · Alembic · uv · React + Vite + Tailwind + shadcn/ui
 
 ## Documentation
 
@@ -59,9 +59,12 @@ The superuser creates the extension once; migrations only run `CREATE EXTENSION 
 ### 5. Ollama
 Install the latest version from https://ollama.com/download, then:
 ```powershell
-ollama pull qwen3:4b-instruct
 ollama pull qwen3-embedding:0.6b
 ```
+
+For the Gemini chat models, create a free key at https://aistudio.google.com/apikey and set `GOOGLE_API_KEY` in `backend/.env`. With it, the question and the retrieved passages are sent to Google. Free-tier quotas are small and per model per day (see `docs/FLOW.md` §4).
+
+For the Groq chat models, create a key at https://console.groq.com/keys and set `GROQ_API_KEY` in `backend/.env`. The question and the retrieved passages are sent to Groq. Set at least one of `GOOGLE_API_KEY` / `GROQ_API_KEY`; the app does not start without a chat model.
 
 ### 6. Project
 ```powershell
@@ -98,7 +101,7 @@ Upload PDFs in the **Library** view, then ask questions in a chat. To check by h
 | Lint / build UI | `frontend/` | `npm run lint` · `npm run build` |
 | Add a shadcn component | `frontend/` | `npx shadcn@latest add <name>` |
 
-Tests that need Postgres skip unless `TEST_DATABASE_URL` is set; Ollama tests skip if Ollama isn't running. **`TEST_DATABASE_URL` must point to a disposable database**: migration tests downgrade it to an empty schema. CI (`.github/workflows/`) runs lint, format check, mypy and the tests against a `pgvector/pgvector:pg18` container.
+Tests that need Postgres skip unless `TEST_DATABASE_URL` is set; Ollama tests skip if Ollama isn't running, and live Gemini/Groq tests skip without their key. **`TEST_DATABASE_URL` must point to a disposable database**: migration tests downgrade it to an empty schema. CI (`.github/workflows/`) runs lint, format check, mypy and the tests against a `pgvector/pgvector:pg18` container.
 
 ## Repository layout
 

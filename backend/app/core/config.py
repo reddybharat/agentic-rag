@@ -10,6 +10,8 @@ class Settings(BaseSettings):
 
     database_url: str
     ollama_base_url: str = "http://localhost:11434"
+    google_api_key: str | None = None
+    groq_api_key: str | None = None
     log_level: str = "INFO"
     log_json: bool = True
     default_owner_id: str = "local"

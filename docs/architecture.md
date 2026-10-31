@@ -4,7 +4,7 @@ The design and why it is this way. What is implemented right now, file by file, 
 
 ## TL;DR
 
-- **What:** chat with your PDFs. One agent on Ollama (`qwen3:4b-instruct`) answers from a per-owner document library in Postgres + pgvector and cites pages.
+- **What:** chat with your PDFs. One agent on a Gemini free-tier or Groq model (chosen per message) answers from a per-owner document library in Postgres + pgvector and cites pages.
 - **Progressive disclosure:** the model starts with a small base system prompt and a one-line index of skills. It reads a skill (`read_skill_file`) before it can use the skill's tools.
 - **Layers:** `api → services → domain ← infra`, with `agent` depending only on domain ports. `container.py` is the only module that wires concrete classes.
 - **Stateless turns:** each question is answered on its own. No history reaches the model.
@@ -22,8 +22,11 @@ flowchart LR
         ui["UI<br/>React + Vite dev server"]
         api["API<br/>FastAPI · uvicorn"]
         db[("PostgreSQL 18<br/>+ pgvector")]
-        ollama["Ollama<br/>qwen3:4b-instruct · qwen3-embedding:0.6b"]
+        ollama["Ollama<br/>qwen3-embedding:0.6b (embeddings)"]
     end
+
+    gemini["Google Gemini API<br/>(free tier, chat models)"]
+    groq["Groq API<br/>(chat models)"]
 
     mcp["MCP servers<br/>(later)"]
 
@@ -31,6 +34,8 @@ flowchart LR
     ui -- "REST + SSE" --> api
     api -- "sessions, documents,<br/>chunks, usage" --> db
     api -- "localhost:11434" --> ollama
+    api -- "question + retrieved passages" --> gemini
+    api -- "question + retrieved passages" --> groq
     api -. "tools (later)" .-> mcp
 ```
 
@@ -70,7 +75,7 @@ flowchart TB
 
 | Port (`domain/ports.py`) | Adapter (`infra/`) |
 |---|---|
-| `ChatModelProvider` | `llm/ollama.py`, selected through `llm/model_factory.py` |
+| `ChatModelProvider` | `llm/groq.py`, `llm/gemini.py`, selected through `llm/model_factory.py` |
 | `Embedder` | `embeddings/ollama.py` |
 | `SessionRepository`, `DocumentRepository` (incl. vector search), `UsageRepository` | `db/repositories/*` |
 | `UnitOfWork` | `db/unit_of_work.py` |
@@ -88,7 +93,7 @@ sequenceDiagram
     participant API as api/chat
     participant Chat as ChatService
     participant Agent as Agent + ProgressiveDisclosure
-    participant LLM as Ollama qwen3:4b-instruct
+    participant LLM as Chat model (Gemini or Groq)
     participant Tools as tools
 
     UI->>API: POST /sessions/{id}/messages
@@ -200,7 +205,7 @@ erDiagram
 | # | Decision |
 | - | -------- |
 | D1 | One agent. LangChain `create_agent` runs only the tool loop; sessions, ingestion and streaming are plain services |
-| D2 | Ollama only, native on the host. One chat model for everything, so Ollama never swaps models in 6 GB of VRAM |
+| D2 | The chat model is chosen per message from a catalog (`config/models.yaml`): Gemini free-tier models by default, Groq-hosted models (`qwen/qwen3.8-27b`) as the alternative. Embeddings and the document library stay local on Ollama and Postgres, so only the question and retrieved passages go to Google or Groq. A local 4B Ollama chat model was dropped: it was too weak to read a skill before searching |
 | D3 | PostgreSQL 18 + pgvector, native; HNSW cosine index; one embedding model per deployment, stored on each document and checked by `/ready` |
 | D4 | Progressive disclosure: base prompt + skill index → `SKILL.md` → tools. A tool is unlocked only by a read skill's `allowed-tools` |
 | D6 | Stateless single-turn queries. No checkpointer; history is a later enhancement |
@@ -228,7 +233,7 @@ Planned enhancements and where each plugs in:
 | Human approval for tools | Human-in-the-loop middleware (needs the checkpointer) |
 | Long-term memory | Memory tools + a skill that lists them + a `memories` table |
 | Web search | Search tools + a skill that lists them |
-| Agent profiles, auto routing | Routing middleware choosing a model per call (today there is one model) |
-| Other chat providers | New provider registered in `ModelFactory` |
+| Agent profiles, auto routing | Routing middleware choosing a model per call (today the user picks the model) |
+| More chat providers | New provider registered in `ModelFactory` (Gemini and Groq were added) |
 | Tracing + evals | Langfuse callback handler; eval datasets |
 | Real auth | Replace `DEFAULT_OWNER_ID` with a resolved user in `api/deps.py` |

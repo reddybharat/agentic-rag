@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import Depends, Request
 
+from app.api.schemas.chat import ChatRequest, MessageIn
 from app.container import Container
 from app.domain.models import Session
 from app.services.chat import ChatService
@@ -40,3 +41,11 @@ async def get_session(session_id: uuid.UUID, sessions: SessionServiceDep) -> Ses
 
 
 SessionDep = Annotated[Session, Depends(get_session)]
+
+
+async def get_chat_request(body: MessageIn, chat: ChatServiceDep) -> ChatRequest:
+    """Validates the model before streaming starts, so a bad id is a 422 and not a stream error."""
+    return ChatRequest(text=body.text, model_id=chat.resolve_model_id(body.model_id))
+
+
+ChatRequestDep = Annotated[ChatRequest, Depends(get_chat_request)]

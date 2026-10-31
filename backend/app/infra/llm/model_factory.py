@@ -2,12 +2,16 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Self
 
+import structlog
 import yaml
 from langchain_core.language_models import BaseChatModel
 from pydantic import BaseModel
 
+from app.core.errors import UnknownModelError
 from app.domain.models import ModelSpec
 from app.domain.ports import ChatModelProvider
+
+log = structlog.get_logger()
 
 
 class _Catalog(BaseModel):
@@ -15,18 +19,21 @@ class _Catalog(BaseModel):
 
 
 class ModelFactory:
-    """Builds the catalog's one chat model through its registered provider."""
+    """Builds every catalog model whose provider is registered; the first one is the default."""
 
     def __init__(
         self, specs: Sequence[ModelSpec], providers: Mapping[str, ChatModelProvider]
     ) -> None:
-        if len(specs) != 1:
-            raise ValueError(f"The catalog needs exactly one model, got {len(specs)}")
-        spec = specs[0]
-        if spec.provider not in providers:
-            raise ValueError(f"No chat provider registered for {spec.provider!r}")
-        self._spec = spec
-        self._model = providers[spec.provider].create(spec)
+        ids = [spec.id for spec in specs]
+        if len(set(ids)) != len(ids):
+            raise ValueError(f"Duplicate model ids in the catalog: {sorted(ids)}")
+        for spec in specs:
+            if spec.provider not in providers:
+                log.warning("model_skipped", model_id=spec.id, provider=spec.provider)
+        self._specs = [spec for spec in specs if spec.provider in providers]
+        if not self._specs:
+            raise ValueError("No catalog model has a registered provider")
+        self._models = {spec.id: providers[spec.provider].create(spec) for spec in self._specs}
 
     @classmethod
     def from_yaml(cls, path: Path, providers: Mapping[str, ChatModelProvider]) -> Self:
@@ -34,9 +41,14 @@ class ModelFactory:
         return cls(catalog.models, providers)
 
     @property
-    def spec(self) -> ModelSpec:
-        return self._spec
+    def specs(self) -> list[ModelSpec]:
+        return list(self._specs)
 
     @property
-    def model(self) -> BaseChatModel:
-        return self._model
+    def default(self) -> ModelSpec:
+        return self._specs[0]
+
+    def model(self, model_id: str) -> BaseChatModel:
+        if model_id not in self._models:
+            raise UnknownModelError(f"Unknown model {model_id!r}")
+        return self._models[model_id]
