@@ -36,7 +36,9 @@ export function Chat({ sessionId, turns, onTurns, libraryEmpty, onTurnEnded }: P
   const [busy, setBusy] = useState(false)
   const bottom = useRef<HTMLDivElement>(null)
 
-  useEffect(() => bottom.current?.scrollIntoView({ block: 'end' }), [turns])
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: 'end' })
+  }, [turns])
 
   async function send() {
     const text = input.trim()
