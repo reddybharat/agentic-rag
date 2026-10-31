@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request, Response
 
-from app.api.routes import health
+from app.api.routes import health, models
 from app.container import Container
 from app.core.config import Settings
 from app.core.errors import register_error_handlers
@@ -42,4 +42,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return response
 
     app.include_router(health.router)
+    app.include_router(models.router)
     return app

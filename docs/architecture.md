@@ -1,6 +1,6 @@
 # Architecture
 
-> **Status:** target design for v2. P0 (skeleton: config, logging, errors, `/health`, `/ready`, migrations) is built; P1–P5 are in progress. Update this file whenever a phase changes the architecture.
+> **Status:** target design for v2. P0 (skeleton: config, logging, errors, `/health`, `/ready`, migrations) and P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`) are built; P2–P5 are in progress. Update this file whenever a phase changes the architecture.
 
 ## TL;DR
 
@@ -264,13 +264,13 @@ models:
     model_name: qwen3:4b
     tier: fast            # titles, classification
     supports_tools: true
-    options: { think: false, num_predict: 256 }
+    options: { reasoning: false, num_predict: 256 }
   - id: qwen3-4b-smart
     provider: ollama
     model_name: qwen3:4b
     tier: smart           # answers
     supports_tools: true
-    options: { think: false, num_ctx: 8192 }
+    options: { reasoning: false, num_ctx: 8192 }
 ```
 
 ```dotenv
@@ -278,6 +278,7 @@ DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/agentic_rag
 OLLAMA_BASE_URL=http://localhost:11434
 EMBEDDING_MODEL=qwen3-embedding:0.6b
 EMBEDDING_DIM=1024
+LLM_TIMEOUT_S=120.0
 TAVILY_API_KEY=...
 DEFAULT_OWNER_ID=local
 ```

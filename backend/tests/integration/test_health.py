@@ -1,5 +1,3 @@
-import httpx
-import pytest
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
@@ -37,12 +35,10 @@ def test_ready_is_503_when_dependencies_are_down() -> None:
     }
 
 
-def test_ready_is_200_with_real_dependencies(test_database_url: str) -> None:
-    settings = Settings(database_url=test_database_url, log_json=False)
-    try:
-        httpx.get(f"{settings.ollama_base_url}/api/version", timeout=FAST_TIMEOUT_S)
-    except httpx.HTTPError:
-        pytest.skip(f"Ollama not reachable at {settings.ollama_base_url}")
+def test_ready_is_200_with_real_dependencies(test_database_url: str, ollama_base_url: str) -> None:
+    settings = Settings(
+        database_url=test_database_url, ollama_base_url=ollama_base_url, log_json=False
+    )
 
     with TestClient(create_app(settings)) as client:
         response = client.get("/ready")
