@@ -76,3 +76,39 @@ uv run pre-commit install
 Check it runs: http://localhost:8000/health and http://localhost:8000/ready.
 
 Tests that need Postgres skip unless `TEST_DATABASE_URL` is set; the Ollama-backed readiness test skips if Ollama isn't running. **`TEST_DATABASE_URL` must point to a disposable database**: migration tests downgrade it to an empty schema.
+
+## Migrations (Alembic)
+
+| Task | Command |
+|---|---|
+| Current revision | `uv run alembic current` |
+| All revisions | `uv run alembic history` |
+| Apply all | `uv run alembic upgrade head` |
+| Undo the last one | `uv run alembic downgrade -1` |
+| Undo all (drops app tables) | `uv run alembic downgrade base` |
+
+## Inspecting the database
+
+```powershell
+psql -U app -d agentic_rag
+```
+```sql
+\dt                                    -- sessions, turn_usage, documents, chunks, alembic_version
+SELECT * FROM alembic_version;
+SELECT id, filename, status, page_count, error FROM documents;
+SELECT page, ordinal, left(content, 80) FROM chunks ORDER BY document_id, ordinal;
+SELECT model_id, input_tokens, output_tokens, latency_ms FROM turn_usage ORDER BY created_at DESC;
+```
+
+## Trying ingestion and chat by hand
+
+With the API running (`uv run uvicorn app.main:create_app --factory --reload`), in a second PowerShell:
+
+```powershell
+$s = (Invoke-RestMethod -Method Post http://localhost:8000/sessions -ContentType application/json -Body '{}').id
+curl.exe -F "file=@tests/fixtures/sample.pdf;type=application/pdf" http://localhost:8000/sessions/$s/documents
+curl.exe http://localhost:8000/sessions/$s/documents      # status: pending -> ready
+curl.exe -N -X POST http://localhost:8000/sessions/$s/messages -H "Content-Type: application/json" -d '{\"text\":\"What is the phase two budget?\"}'
+```
+
+Expect `tool_start` (search_docs) → `tool_end` → `token`… → `done`, with a citation like `(sample.pdf, p. 3)`. Uploading the same file again returns 409. Interactive API docs: http://localhost:8000/docs. The facts in `sample.pdf` are listed in [docs/internals.md](../docs/internals.md#11-tests-and-the-sample-pdf).

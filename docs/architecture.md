@@ -1,10 +1,10 @@
 # Architecture
 
-> **Status:** target design for v2. P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`) P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`) and P3 without `web` (capability framework, `documents`, ingestion) are built; `web`, P4 and P5 are in progress. Update this file whenever a phase changes the architecture.
+> **Status:** v2, built phase by phase. Detailed walkthrough of every mechanism (embeddings, chunking, model selection, agent loop): [internals.md](internals.md). P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`) P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`) and P3 (capability framework, `documents`, ingestion) are built; P4 and P5 are in progress. The `web` capability (Tavily) is a later enhancement. Update this file whenever a phase changes the architecture.
 
 ## TL;DR
 
-- **What:** chat with your PDFs and the web. One agent, running locally on Ollama (`qwen3:4b-instruct`), retrieves from Postgres + pgvector and searches the web via Tavily.
+- **What:** chat with your PDFs. One agent, running locally on Ollama (`qwen3:4b-instruct`), retrieves from Postgres + pgvector. Web search (Tavily) is a later enhancement.
 - **Core idea: progressive disclosure.** The agent only sees a short *catalog* of capabilities. It calls `load_capability(name)` to unlock a capability's instructions and tools. `documents` switches on automatically once a session has a ready PDF.
 - **Layers:** `api → services → domain ← infra`, with `agent` depending only on domain ports. `container.py` is the only module that wires concrete classes.
 - **Stateless turns:** each question is answered on its own. No history is sent back to the model (follow-ups are a later enhancement).
@@ -25,13 +25,13 @@ flowchart LR
         ollama["Ollama<br/>qwen3:4b-instruct · qwen3-embedding:0.6b"]
     end
 
-    tavily["Tavily<br/>web search"]
+    tavily["Tavily<br/>web search (later)"]
 
     user --> ui
     ui -- "REST + SSE" --> api
     api -- "sessions, documents,<br/>chunks, usage" --> db
     api -- "localhost:11434" --> ollama
-    api -- HTTPS --> tavily
+    api -. "HTTPS (later)" .-> tavily
 ```
 
 Everything runs natively; there is no Docker locally. Ollama uses the GPU directly, and Postgres runs as a Windows service with pgvector built from source. CI uses a `pgvector/pgvector:pg18` container instead.
@@ -93,13 +93,12 @@ sequenceDiagram
     participant Chat as ChatService
     participant Agent as Agent + middleware
     participant LLM as Ollama qwen3:4b-instruct
-    participant Tools as search_docs / tavily_search
+    participant Tools as search_docs
 
     UI->>API: POST /sessions/{id}/messages
     API->>Chat: send(session_id, text)
     Chat->>Chat: load session (owner filter)
-    Chat->>Agent: astream([system, user])
-    Agent->>Agent: model_select → smart tier
+    Chat->>Agent: astream([user], context=session_id)
     Agent->>Agent: capability_gate → auto-activate documents,<br/>add catalog, filter tools
     loop until final answer or tool-call limit
         Agent->>LLM: messages + visible tools
@@ -118,16 +117,16 @@ sequenceDiagram
 
 ```text
 event: tool_start
-data: {"tool": "search_docs", "args": {"query": "warranty period"}}
+data: {"id": "call_1", "name": "search_docs", "args": {"query": "phase two budget"}}
 
 event: tool_end
-data: {"tool": "search_docs", "results": 3}
+data: {"id": "call_1", "name": "search_docs", "ok": true}
 
 event: token
-data: {"text": "The warranty period is 24 months "}
+data: {"text": "The phase two budget is 4.2 million euros "}
 
 event: token
-data: {"text": "(p. 4, chunk 3f2a…)."}
+data: {"text": "(sample.pdf, p. 3)."}
 
 event: done
 data: {"input_tokens": 1830, "output_tokens": 41, "latency_ms": 2910}
@@ -160,20 +159,28 @@ stateDiagram-v2
 | Capability | Tools | Activation |
 |---|---|---|
 | `documents` | `search_docs` → snippets + page + chunk id + surrounding context from the same page | Automatic once the session has a `ready` document |
-| `web` (not built yet) | `tavily_search`, `fetch_page` | On demand via `load_capability("web")` |
+| `web` (later enhancement) | `tavily_search`, `fetch_page` | On demand via `load_capability("web")` |
 
 ### Example: what the model sees
 
-Before anything is loaded (session with one ready PDF):
+Session **without** a ready PDF: the system prompt ends with a catalog, and the only tool is `load_capability`.
 
 ```text
-Active: documents
-  - Search the user's uploaded PDFs. Cite page and chunk id.
-Available (call load_capability to use):
-  - web: Search the internet and read pages for current information.
+<system.md>
+
+## More capabilities
+Call `load_capability` with a name to use one:
+- documents: Search the PDFs uploaded to this session and answer with page citations.
 ```
 
-After the model calls `load_capability("web")`, the next model call also includes the `web` instructions and the `tavily_search` / `fetch_page` tools.
+Session **with** a ready PDF: `documents` is auto-activated, so the prompt carries its instructions (`prompts/documents.md`) instead, the only tool is `search_docs`, and `load_capability` disappears because nothing is left to load.
+
+```text
+<system.md>
+
+## Capability: documents
+<documents.md>
+```
 
 ### Adding a capability
 
@@ -280,7 +287,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 EMBEDDING_MODEL=qwen3-embedding:0.6b
 EMBEDDING_DIM=1024
 LLM_TIMEOUT_S=120.0
-TAVILY_API_KEY=...
+MAX_UPLOAD_BYTES=20971520
 DEFAULT_OWNER_ID=local
 ```
 
@@ -292,13 +299,12 @@ Both tiers use the same model so Ollama never swaps models within 6 GB of VRAM. 
 
 | Pattern | Where |
 |---|---|
-| Factory + Registry | `ModelFactory`, `ChunkerFactory` |
-| Strategy | Chunking strategies |
-| Adapter | Ollama / Tavily / pgvector behind domain ports |
+| Factory + Registry | `ModelFactory` |
+| Strategy | Page loader and chunker injected into `DocumentService` as functions |
+| Adapter | Ollama / pgvector behind domain ports |
 | Composite | `CapabilityRegistry` over many `CapabilityProvider`s |
 | Repository + Unit of Work | `infra/db` |
-| Builder | `AgentBuilder` |
-| Chain of Responsibility | Middleware: `model_select → capability_gate → tool-call limit` |
+| Chain of Responsibility | Middleware: `CapabilityGate → ToolCallLimitMiddleware` |
 | Dependency Injection | `container.py` |
 
 ---
@@ -309,11 +315,12 @@ These are planned enhancements. Each plugs into an existing extension point:
 
 | Enhancement | Extension point |
 |---|---|
-| Follow-ups + history | Postgres checkpointer + summarization middleware in `AgentBuilder` |
+| Follow-ups + history | Postgres checkpointer + summarization middleware in `build_agent` |
 | MCP servers + approvals | New `CapabilityProvider` + human-in-the-loop middleware (needs the checkpointer) |
 | Long-term memory | New `CapabilityProvider` + `memories` table |
 | Skill files (`SKILL.md`) | New `CapabilityProvider` (phase P5) |
-| Agent profiles, auto routing | Profile config + routing strategy ahead of `model_select` |
+| Agent profiles, auto routing | Profile config + routing middleware choosing a tier per call (today the tier is fixed: smart answers, fast titles) |
 | Other chat providers (Gemini, …) | New provider registered in `ModelFactory` |
+| Web search (Tavily) | New builtin `web` capability provider |
 | Tracing + evals | Langfuse callback handler; evals datasets |
 | Real auth | Replace `DEFAULT_OWNER_ID` with a resolved user in `api/deps.py` |
