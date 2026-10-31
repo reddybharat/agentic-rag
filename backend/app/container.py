@@ -7,8 +7,8 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.agent.agent_builder import build_agent
-from app.agent.capabilities.builtin.documents import DocumentsCapabilityProvider
-from app.agent.capabilities.registry import CapabilityRegistry
+from app.agent.skill_loader import load_skills
+from app.agent.tools import make_retrieve_documents
 from app.core.config import Settings
 from app.domain.models import Tier
 from app.domain.ports import Embedder
@@ -24,6 +24,8 @@ from app.services.documents import DocumentService
 from app.services.sessions import SessionService
 
 PROMPTS_DIR = Path(__file__).parent / "agent" / "prompts"
+# Condition names usable as `when:` in skills/preactivation.yaml.
+LIBRARY_HAS_DOCUMENTS = "library_has_documents"
 
 
 def _prompt(name: str) -> str:
@@ -72,13 +74,6 @@ class Container:
             split_words,
             settings.max_upload_bytes,
         )
-        registry = CapabilityRegistry(
-            [
-                DocumentsCapabilityProvider(
-                    _prompt("documents"), documents.search, documents.has_ready
-                )
-            ]
-        )
         return cls(
             settings=settings,
             engine=engine,
@@ -91,7 +86,13 @@ class Container:
             documents=documents,
             chat=ChatService(
                 uow,
-                build_agent(model_factory.for_tier(Tier.SMART), _prompt("system"), registry),
+                build_agent(
+                    model_factory.for_tier(Tier.SMART),
+                    _prompt("system"),
+                    load_skills(),
+                    [make_retrieve_documents(documents.search)],
+                    {LIBRARY_HAS_DOCUMENTS: documents.has_ready},
+                ),
                 model_factory.spec_for(Tier.SMART).id,
                 sessions,
             ),

@@ -5,7 +5,6 @@ from typing import Protocol, Self
 from langchain_core.language_models import BaseChatModel
 
 from app.domain.models import (
-    Capability,
     ChunkHit,
     ChunkIn,
     Document,
@@ -73,10 +72,6 @@ class DocumentRepository(Protocol):
     async def search(self, owner_id: str, embedding: list[float], limit: int) -> list[ChunkHit]: ...
 
     async def has_other_embedding_model(self, embedding_model: str) -> bool: ...
-
-
-class CapabilityProvider(Protocol):
-    def discover(self) -> list[Capability]: ...
 
 
 class UnitOfWork(Protocol):

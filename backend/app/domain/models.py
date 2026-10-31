@@ -1,11 +1,8 @@
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from langchain_core.tools import BaseTool
 from pydantic import BaseModel, ConfigDict
 
 
@@ -25,19 +22,6 @@ class ModelSpec(BaseModel):
     tier: Tier
     supports_tools: bool
     options: dict[str, str | int | float | bool] = {}
-
-
-@dataclass(frozen=True)
-class Capability:
-    """Unit of progressive disclosure: the agent sees `description` until the capability is
-    active, then `instructions` and `tools`."""
-
-    name: str
-    description: str
-    instructions: str
-    tools: Sequence[BaseTool]
-    # Activates the capability for an owner's turn without the model asking for it.
-    auto_activate_when: Callable[[str], Awaitable[bool]] | None = None
 
 
 DEFAULT_SESSION_TITLE = "New chat"

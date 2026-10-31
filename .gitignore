@@ -14,3 +14,4 @@ __pycache__/
 # Editor / assistant
 .vscode/
 .claude/plans/
+CLAUDE.md

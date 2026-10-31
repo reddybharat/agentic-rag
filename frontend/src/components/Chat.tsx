@@ -8,6 +8,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { streamMessage } from '@/lib/api'
 
 const MAX_MESSAGE_CHARS = 8000
+// Skills reach the agent as read_skill_file calls (pre-reads included) with args.path = '<name>/SKILL.md'.
+const READ_SKILL_FILE = 'read_skill_file'
+const SKILL_FILE_SUFFIX = /\/SKILL\.md$/
 
 export interface ToolStep {
   id: string
@@ -20,6 +23,7 @@ export interface Turn {
   role: 'user' | 'assistant'
   text: string
   tools: ToolStep[]
+  skills: string[]
   error?: string
 }
 
@@ -48,8 +52,8 @@ export function Chat({ sessionId, turns, onTurns, libraryEmpty, onTurnEnded }: P
     const answerId = crypto.randomUUID()
     onTurns((t) => [
       ...t,
-      { id: crypto.randomUUID(), role: 'user', text, tools: [] },
-      { id: answerId, role: 'assistant', text: '', tools: [] },
+      { id: crypto.randomUUID(), role: 'user', text, tools: [], skills: [] },
+      { id: answerId, role: 'assistant', text: '', tools: [], skills: [] },
     ])
     const patch = (fn: (turn: Turn) => Turn) =>
       onTurns((t) => t.map((x) => (x.id === answerId ? fn(x) : x)))
@@ -57,7 +61,11 @@ export function Chat({ sessionId, turns, onTurns, libraryEmpty, onTurnEnded }: P
       for await (const e of streamMessage(sessionId, text)) {
         if (e.type === 'token') patch((x) => ({ ...x, text: x.text + e.text }))
         else if (e.type === 'tool_start')
-          patch((x) => ({ ...x, tools: [...x.tools, { id: e.id, name: e.name }] }))
+          patch((x) => ({
+            ...x,
+            tools: [...x.tools, { id: e.id, name: e.name }],
+            skills: e.name === READ_SKILL_FILE ? addSkill(x.skills, e.args.path) : x.skills,
+          }))
         else if (e.type === 'tool_end')
           patch((x) => ({ ...x, tools: x.tools.map((s) => (s.id === e.id ? { ...s, ok: e.ok } : s)) }))
         else if (e.type === 'error') patch((x) => ({ ...x, error: e.message }))
@@ -118,6 +126,11 @@ export function Chat({ sessionId, turns, onTurns, libraryEmpty, onTurnEnded }: P
   )
 }
 
+function addSkill(skills: string[], path: unknown): string[] {
+  const name = String(path ?? '').trim().replace(SKILL_FILE_SUFFIX, '')
+  return !name || skills.includes(name) ? skills : [...skills, name]
+}
+
 function UserTurn({ turn }: { turn: Turn }) {
   return (
     <p className="ml-auto max-w-[85%] whitespace-pre-wrap rounded-lg bg-muted px-3 py-2 text-sm">
@@ -136,21 +149,39 @@ function AnswerTurn({ turn }: { turn: Turn }) {
       )}
       {turn.error && <p className="text-destructive">{turn.error}</p>}
       {!turn.text && !turn.error && <p className="text-muted-foreground">Thinking…</p>}
-      {turn.tools.length > 0 && (
-        <Collapsible>
-          <CollapsibleTrigger className="group flex items-center gap-1 text-xs text-muted-foreground">
-            <ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
-            {turn.tools.length} tool step{turn.tools.length > 1 ? 's' : ''}
-          </CollapsibleTrigger>
-          <CollapsibleContent className="mt-1 space-y-0.5 pl-4 text-xs text-muted-foreground">
-            {turn.tools.map((s) => (
-              <div key={s.id}>
-                {s.name} {s.ok === undefined ? '…' : s.ok ? '✓' : '✗'}
-              </div>
-            ))}
-          </CollapsibleContent>
-        </Collapsible>
-      )}
+      <Steps skills={turn.skills} tools={turn.tools.filter((s) => s.name !== READ_SKILL_FILE)} />
     </div>
+  )
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
+}
+
+function Steps({ skills, tools }: { skills: string[]; tools: ToolStep[] }) {
+  if (skills.length === 0 && tools.length === 0) return null
+  const summary = [
+    skills.length > 0 && plural(skills.length, 'skill'),
+    tools.length > 0 && plural(tools.length, 'tool'),
+  ]
+    .filter(Boolean)
+    .join(' · ')
+  return (
+    <Collapsible>
+      <CollapsibleTrigger className="group flex items-center gap-1 text-xs text-muted-foreground">
+        <ChevronRight className="size-3 transition-transform group-data-[state=open]:rotate-90" />
+        {summary}
+      </CollapsibleTrigger>
+      <CollapsibleContent className="mt-1 space-y-0.5 pl-4 text-xs text-muted-foreground">
+        {skills.map((name) => (
+          <div key={name}>skill: {name}</div>
+        ))}
+        {tools.map((s) => (
+          <div key={s.id}>
+            tool: {s.name} {s.ok === undefined ? '…' : s.ok ? '✓' : '✗'}
+          </div>
+        ))}
+      </CollapsibleContent>
+    </Collapsible>
   )
 }

@@ -94,7 +94,7 @@ def test_chat_answers_from_document_with_page_citation(
     events = _events(response.text)
     tool_starts = [data["name"] for name, data in events if name == "tool_start"]
     answer = "".join(str(data["text"]) for name, data in events if name == "token")
-    assert "search_docs" in tool_starts
+    assert "retrieve_documents" in tool_starts
     assert "4.2" in answer
     assert "p. 3" in answer or "page 3" in answer.lower()
     assert events[-1][0] == "done"

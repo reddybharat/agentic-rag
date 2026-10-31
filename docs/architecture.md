@@ -1,14 +1,14 @@
 # Architecture
 
-> **Status:** v2, built phase by phase. Detailed walkthrough of every mechanism (embeddings, chunking, model selection, agent loop): [internals.md](internals.md). P0 (skeleton), P1 (model catalog, `ModelFactory`, Ollama chat + embedder, `GET /models`), P2 (sessions CRUD, stateless SSE chat, auto-title, `turn_usage`), P3 (capability framework, `documents`, ingestion) P4 (shared document library), P5 (frontend) and P6 (structured logging, see internals §13) are built; skill files (P7) are next. The `web` capability (Tavily) is a later enhancement. Update this file whenever a phase changes the architecture.
+The design and why it is this way. What is implemented right now, file by file, is in [FLOW.md](FLOW.md). Change this file only when the developer approves a design change (see [CLAUDE.md](../CLAUDE.md)).
 
 ## TL;DR
 
-- **What:** chat with your PDFs. One agent, running locally on Ollama (`qwen3:4b-instruct`), retrieves from Postgres + pgvector. Web search (Tavily) is a later enhancement.
-- **Core idea: progressive disclosure.** The agent only sees a short *catalog* of capabilities. It calls `load_capability(name)` to unlock a capability's instructions and tools. `documents` switches on automatically once the library has a ready PDF.
+- **What:** chat with your PDFs. One agent on Ollama (`qwen3:4b-instruct`) answers from a per-owner document library in Postgres + pgvector and cites pages.
+- **Progressive disclosure:** the model starts with a small base system prompt and a one-line index of skills. It reads a skill (`read_skill_file`) before it can use the skill's tools. Deterministic pre-activation rules (trigger words, conditions such as "the library has documents") do that up front without a model call.
 - **Layers:** `api → services → domain ← infra`, with `agent` depending only on domain ports. `container.py` is the only module that wires concrete classes.
-- **Stateless turns:** each question is answered on its own. No history is sent back to the model (follow-ups are a later enhancement).
-- **One document library per owner.** PDFs are uploaded and ingested ahead of time, independent of any chat, and every session searches all of the owner's `ready` documents (see Decisions below).
+- **Stateless turns:** each question is answered on its own. No history reaches the model.
+- **Library, not workspaces:** PDFs are ingested ahead of time, independent of any chat, and every session searches all of the owner's `ready` documents.
 
 ---
 
@@ -25,16 +25,16 @@ flowchart LR
         ollama["Ollama<br/>qwen3:4b-instruct · qwen3-embedding:0.6b"]
     end
 
-    tavily["Tavily<br/>web search (later)"]
+    mcp["MCP servers<br/>(later)"]
 
     user --> ui
     ui -- "REST + SSE" --> api
     api -- "sessions, documents,<br/>chunks, usage" --> db
     api -- "localhost:11434" --> ollama
-    api -. "HTTPS (later)" .-> tavily
+    api -. "tools (later)" .-> mcp
 ```
 
-Everything runs natively; there is no Docker locally. Ollama uses the GPU directly, and Postgres runs as a Windows service with pgvector built from source. CI uses a `pgvector/pgvector:pg18` container instead.
+Everything runs natively; there is no Docker locally. Ollama uses the GPU directly, and Postgres runs as a Windows service with pgvector built from source. CI uses a `pgvector/pgvector:pg18` container.
 
 ---
 
@@ -44,9 +44,9 @@ Everything runs natively; there is no Docker locally. Ollama uses the GPU direct
 flowchart TB
     api["<b>api/</b><br/>routes · schemas · deps<br/><i>HTTP only</i>"]
     services["<b>services/</b><br/>ChatService · SessionService · DocumentService<br/><i>use cases</i>"]
-    agent["<b>agent/</b><br/>build_agent · middleware · CapabilityRegistry<br/><i>agent loop</i>"]
+    agent["<b>agent/</b><br/>build_agent · skills · tools · ProgressiveDisclosure<br/><i>agent loop</i>"]
     domain["<b>domain/</b><br/>models · ports (Protocols)<br/><i>no I/O</i>"]
-    infra["<b>infra/</b><br/>db · llm · embeddings · rag · search<br/><i>adapters, I/O only</i>"]
+    infra["<b>infra/</b><br/>db · llm · embeddings · rag<br/><i>adapters, I/O only</i>"]
     container{{"<b>container.py</b><br/>composition root"}}
 
     api --> services
@@ -62,24 +62,20 @@ flowchart TB
 
 | Layer | Owns | Must not |
 |---|---|---|
-| `api/` | Request parsing, response/SSE shaping, status codes | Contain business rules or touch the DB directly |
-| `services/` | Use cases: chat turn, session CRUD, ingestion | Import concrete adapters |
-| `agent/` | Agent assembly, middleware, capabilities | Import concrete adapters |
+| `api/` | Request parsing, response and SSE shaping, status codes | Contain business rules or touch the DB |
+| `services/` | Use cases: chat turn, session CRUD, ingestion, search | Import concrete adapters |
+| `agent/` | Agent assembly, middleware, skills, local tools | Import concrete adapters |
 | `domain/` | Entities, value objects, ports | Do I/O |
-| `infra/` | Postgres, pgvector, Ollama, Tavily, PDF parsing | Make decisions beyond translating I/O |
-
-### Ports and their adapters
+| `infra/` | Postgres, pgvector, Ollama, PDF parsing | Decide anything beyond translating I/O |
 
 | Port (`domain/ports.py`) | Adapter (`infra/`) |
 |---|---|
-| `ChatModelProvider` | `llm/ollama.py` via `ModelFactory` |
+| `ChatModelProvider` | `llm/ollama.py`, selected through `llm/model_factory.py` |
 | `Embedder` | `embeddings/ollama.py` |
-| `VectorStore` | `rag/pgvector_store.py` |
-| `SessionRepository`, `DocumentRepository`, `UsageRepository` | `db/repositories/*` |
+| `SessionRepository`, `DocumentRepository` (incl. vector search), `UsageRepository` | `db/repositories/*` |
 | `UnitOfWork` | `db/unit_of_work.py` |
-| `CapabilityProvider` | `agent/capabilities/builtin/*` (later: skill files, memory, MCP) |
 
-Ports use `langchain_core` types (`BaseChatModel`, `BaseTool`, `Document`) directly instead of rewrapping them.
+Ports use `langchain_core` types (`BaseChatModel`, `BaseTool`) directly instead of rewrapping them.
 
 ---
 
@@ -91,100 +87,49 @@ sequenceDiagram
     participant UI
     participant API as api/chat
     participant Chat as ChatService
-    participant Agent as Agent + middleware
+    participant Agent as Agent + ProgressiveDisclosure
     participant LLM as Ollama qwen3:4b-instruct
-    participant Tools as search_docs
+    participant Tools as tools
 
     UI->>API: POST /sessions/{id}/messages
-    API->>Chat: send(session_id, text)
-    Chat->>Chat: load session (owner filter)
-    Chat->>Agent: astream([user], context=session_id)
-    Agent->>Agent: capability_gate → auto-activate documents,<br/>add catalog, filter tools
+    API->>Chat: stream(session, text)
+    Chat->>Agent: astream([user message], context=owner_id)
+    Agent->>Agent: pre-activation: enable tools whose condition holds,<br/>pre-read skills whose trigger words are in the question
     loop until final answer or tool-call limit
-        Agent->>LLM: messages + visible tools
+        Agent->>LLM: base prompt + skill index, messages, unlocked tools
         LLM-->>Agent: tool call / tokens
-        Agent->>Tools: run tool
+        Agent->>Tools: read_skill_file or an unlocked tool
         Tools-->>Agent: result
         Agent-->>API: tool_start / tool_end
     end
     Agent-->>API: token … token
     API-->>UI: SSE stream
-    Chat->>Chat: persist turn_usage
+    Chat->>Chat: persist turn_usage, auto-title
     API-->>UI: done
 ```
 
-### Example SSE stream
-
-```text
-event: tool_start
-data: {"id": "call_1", "name": "search_docs", "args": {"query": "phase two budget"}}
-
-event: tool_end
-data: {"id": "call_1", "name": "search_docs", "ok": true}
-
-event: token
-data: {"text": "The phase two budget is 4.2 million euros "}
-
-event: token
-data: {"text": "(sample.pdf, p. 3)."}
-
-event: done
-data: {"input_tokens": 1830, "output_tokens": 41, "latency_ms": 2910}
-```
-
-Qwen's thinking tokens are filtered out before `token` events go out.
-
 ---
 
-## Capabilities and progressive disclosure
+## Progressive disclosure
 
-A **capability** is a bundle of `{name, description, instructions, tools, auto_activate_when}` (`requires_approval` arrives with HITL). All tools are registered once when the agent is built; `capability_gate` decides what the model actually sees on each call.
+| Layer | Source | The model sees it |
+|---|---|---|
+| L0 base prompt | `agent/prompts/system.md` | Always, as the start of the system prompt |
+| Skill index | frontmatter of every `agent/skills/<name>/SKILL.md` | Always, appended to the base prompt: one line per skill (name, path, description) |
+| L1 skill | `agent/skills/<name>/SKILL.md` | After `read_skill_file("<name>/SKILL.md")` returns it as a tool result. Reading it unlocks the tools in its `allowed-tools` |
+| Pre-activation | `agent/skills/preactivation.yaml` | Never. Harness rules applied before the first model call |
+| Tools | local (`agent/tools.py`), MCP later | Only when unlocked by a read skill or enabled by a pre-activation condition |
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Catalog: registered
-    Catalog --> Active: load_capability(name)
-    Catalog --> Active: auto_activate_when holds<br/>(e.g. library has a ready PDF)
-    Active --> Active: load_capability(name)<br/>returns "already active"
-    Active --> [*]: turn ends (stateless)
+    [*] --> Locked: tool registered at build
+    Locked --> Unlocked: a skill listing it is read this turn
+    Locked --> Unlocked: pre-activation trigger word pre-read that skill
+    Locked --> Unlocked: pre-activation condition holds (e.g. library has documents)
+    Unlocked --> [*]: turn ends (stateless)
 ```
 
-| State | Model sees |
-|---|---|
-| Catalog | One line: name + description |
-| Active | Full instructions + the capability's tools |
-
-### Built-in capabilities
-
-| Capability | Tools | Activation |
-|---|---|---|
-| `documents` | `search_docs` → snippets + page + chunk id + surrounding context from the same page | Automatic once the owner has a `ready` document |
-| `web` (later enhancement) | `tavily_search`, `fetch_page` | On demand via `load_capability("web")` |
-
-### Example: what the model sees
-
-Library **without** a ready PDF: the system prompt ends with a catalog, and the only tool is `load_capability`.
-
-```text
-<system.md>
-
-## More capabilities
-Call `load_capability` with a name to use one:
-- documents: Search the user's uploaded PDF library and answer with page citations.
-```
-
-Library **with** a ready PDF: `documents` is auto-activated, so the prompt carries its instructions (`prompts/documents.md`) instead, the only tool is `search_docs`, and `load_capability` disappears because nothing is left to load.
-
-```text
-<system.md>
-
-## Capability: documents
-<documents.md>
-```
-
-### Adding a capability
-
-Write a new `CapabilityProvider`, register it in `container.py`, and that's it; no existing code changes. Later sources (skill files, memory, MCP servers) plug in the same way.
+Locked tools are hidden from the model's tool schema, and a call to one is refused, in case the model names it anyway. Skills and tools are separate: a skill says how and when to use tools, a tool does I/O, and `allowed-tools` connects them by name. The format of a skill is fixed by [skill-template/SKILL.md](skill-template/SKILL.md).
 
 ---
 
@@ -198,14 +143,10 @@ flowchart LR
     val -- "too large" --> big["413"]
     val -- ok --> pend["documents row<br/>status = pending"]
     pend --> bg["background task"]
-    bg --> load["pypdf loader"] --> chunk["chunker"] --> emb["qwen3-embedding<br/>1024-d"] --> store[("chunks<br/>pgvector + HNSW")]
+    bg --> load["pypdf pages"] --> chunk["per-page chunker"] --> emb["qwen3-embedding<br/>1024-d"] --> store[("chunks<br/>pgvector + HNSW")]
     store --> ready["status = ready"]
     bg -. error .-> failed["status = failed + error"]
 ```
-
-Chunks are embedded without a prefix; queries are embedded with an instruction prefix (`Instruct: …\nQuery: …`). The embedding model name is stored on every document, and `/ready` fails if it doesn't match the configured `EMBEDDING_MODEL`.
-
-> `shortcut:` ingestion uses FastAPI `BackgroundTasks`, so in-flight jobs are lost on restart. Upgrade to a job queue if ingestion must survive restarts.
 
 ---
 
@@ -254,85 +195,46 @@ erDiagram
     }
 ```
 
-`documents` is unique on `(owner_id, sha256)`. `chunks.owner_id` is denormalised so every vector search filters by owner without a join. Every repository query filters by `owner_id` (currently `DEFAULT_OWNER_ID`). Sessions and documents are independent: deleting a session leaves the library untouched.
+`documents` is unique on `(owner_id, sha256)`. `chunks.owner_id` is denormalised so every vector search filters by owner without a join. Sessions and documents are independent: deleting a session leaves the library untouched.
 
 ---
 
-## Configuration
+## Key decisions
 
-Everything comes from `Settings` (env vars, see `.env.example`) plus `config/models.yaml`.
+| # | Decision |
+| - | -------- |
+| D1 | One agent. LangChain `create_agent` runs only the tool loop; sessions, ingestion and streaming are plain services |
+| D2 | Ollama only, native on the host. Both model tiers (`fast` for titles, `smart` for answers) use the same weights, so Ollama never swaps models in 6 GB of VRAM |
+| D3 | PostgreSQL 18 + pgvector, native; HNSW cosine index; one embedding model per deployment, stored on each document and checked by `/ready` |
+| D4 | Progressive disclosure: base prompt + skill index → `SKILL.md` → tools. A tool is unlocked only by a read skill's `allowed-tools` or a pre-activation condition |
+| D5 | Deterministic first: pre-activation trigger words and conditions run before the first model call and save model calls |
+| D6 | Stateless single-turn queries. No checkpointer; history is a later enhancement |
+| D7 | One document library per owner instead of per-session workspaces (below) |
+| D8 | Chunks never cross a page, and retrieval context comes from the same page only, so every citation has one correct page |
+| D9 | The owner comes from the server and reaches tools through `AgentContext`, never through tool arguments or the model |
+| D10 | Logs carry ids, counts, sizes and durations, never message text, document content or file bytes |
 
-```yaml
-# config/models.yaml
-models:
-  - id: qwen3-4b-fast
-    provider: ollama
-    model_name: qwen3:4b-instruct
-    tier: fast            # titles, classification
-    supports_tools: true
-    options: { reasoning: false, num_predict: 256 }
-  - id: qwen3-4b-smart
-    provider: ollama
-    model_name: qwen3:4b-instruct
-    tier: smart           # answers
-    supports_tools: true
-    options: { reasoning: false, num_ctx: 8192 }
-```
-
-```dotenv
-DATABASE_URL=postgresql+asyncpg://app:app@localhost:5432/agentic_rag
-OLLAMA_BASE_URL=http://localhost:11434
-EMBEDDING_MODEL=qwen3-embedding:0.6b
-EMBEDDING_DIM=1024
-LLM_TIMEOUT_S=120.0
-MAX_UPLOAD_BYTES=20971520
-DEFAULT_OWNER_ID=local
-CORS_ORIGINS=["http://localhost:5173"]
-```
-
-Both tiers use the same model so Ollama never swaps models within 6 GB of VRAM. Pointing `fast` at a smaller model later is a one-line YAML change.
+### D7: document library instead of per-session workspaces
+- **Context:** PDFs were first scoped to the session they were uploaded in. Everything is local, so ingesting once ahead of time is cheap, and the same PDF was being embedded again for every session.
+- **Decision:** documents belong to the owner. `POST /documents` ingests a PDF into the library, and every session searches all of the owner's `ready` documents.
+- **Consequences:** no per-session document selection; deleting a session keeps its documents, and `DELETE /documents/{id}` removes one. Migration `0004` moved existing rows to their session's owner and kept the earliest copy of duplicated PDFs. Its downgrade deletes all documents because they can't be mapped back to a session.
 
 ---
 
-## Design patterns in use
+## Extension points
 
-| Pattern | Where |
-|---|---|
-| Factory + Registry | `ModelFactory` |
-| Strategy | Page loader and chunker injected into `DocumentService` as functions |
-| Adapter | Ollama / pgvector behind domain ports |
-| Composite | `CapabilityRegistry` over many `CapabilityProvider`s |
-| Repository + Unit of Work | `infra/db` |
-| Chain of Responsibility | Middleware: `CapabilityGate → ToolCallLimitMiddleware` |
-| Dependency Injection | `container.py` |
-
----
-
-## Frontend (P5)
-
-`frontend/` is a React + Vite SPA (Tailwind, shadcn/ui) that talks to the backend directly (CORS allows `http://localhost:5173`; base URL from `VITE_API_URL`). `src/lib/api.ts` holds the typed REST calls and `streamMessage`, which POSTs a message and parses the SSE stream (`EventSource` cannot POST). Views: sessions sidebar (new/rename/delete), chat (markdown with raw HTML skipped, collapsed tool-step line per answer), and Library (drop zone/picker, per-file status, polls every 2 s while any document is `pending`). Chat turns live in tab state only: a refresh clears them, matching the stateless backend.
-
-## Not yet in the architecture
-
-These are planned enhancements. Each plugs into an existing extension point:
+Planned enhancements and where each plugs in:
 
 | Enhancement | Extension point |
 |---|---|
+| MCP tools | MCP client tools passed to `build_agent` next to the local ones, unlocked by `allowed-tools` like any tool |
+| More skills | A new `agent/skills/<name>/SKILL.md` (+ optional pre-activation rule) |
+| New pre-activation condition | A named check in `container.py`, referenced as `when:` in `preactivation.yaml` |
 | Follow-ups + history | Postgres checkpointer + summarization middleware in `build_agent` |
-| MCP servers + approvals | New `CapabilityProvider` + human-in-the-loop middleware (needs the checkpointer) |
-| Long-term memory | New `CapabilityProvider` + `memories` table |
-| Skill files (`SKILL.md`) | New `CapabilityProvider` (phase P7) |
-| Agent profiles, auto routing | Profile config + routing middleware choosing a tier per call (today the tier is fixed: smart answers, fast titles) |
-| Other chat providers (Gemini, …) | New provider registered in `ModelFactory` |
-| Web search (Tavily) | New builtin `web` capability provider |
-| Tracing + evals | Langfuse callback handler; evals datasets |
+| Human approval for tools | Human-in-the-loop middleware (needs the checkpointer) |
+| Long-term memory | Memory tools + a skill that lists them + a `memories` table |
+| Web search | Search tools + a skill that lists them |
+| Agent profiles, auto routing | Routing middleware choosing a tier per call (today the tier is fixed) |
+| Other chat providers | New provider registered in `ModelFactory` |
+| Tracing + evals | Langfuse callback handler; eval datasets |
 | Real auth | Replace `DEFAULT_OWNER_ID` with a resolved user in `api/deps.py` |
-
----
-
-## Decisions
-
-### Document library instead of per-session workspaces (P4)
-- **Context:** P3 scoped PDFs to the session they were uploaded in. Everything is stored locally, so ingesting once ahead of time is cheap, and the same PDF was being embedded again for every session.
-- **Decision:** documents belong to the owner. `POST /documents` ingests a PDF into the library, and every session searches all of the owner's `ready` documents. `AgentContext` carries `owner_id` and the `documents` capability auto-activates on `owner_id`, not `session_id`.
-- **Consequences:** no per-session document selection (every session sees the whole library); deleting a session keeps its documents, and `DELETE /documents/{id}` is how to remove one. Migration `0004` moves P3 rows to their session's owner and keeps the earliest copy of PDFs that were uploaded to several sessions. Its downgrade deletes all documents because they can't be mapped back to a session.
