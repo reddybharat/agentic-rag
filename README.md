@@ -1,99 +1,114 @@
-# Agentic Retrieval-Augmented Generation
+# Agentic RAG
 
-🌐 **Live Demo**: [https://rag-reddybharat.streamlit.app/](https://rag-reddybharat.streamlit.app/)
+Chat with your PDFs, locally. One agent on a Gemini free-tier or Groq model (picked in the chat input) answers from a document library in Postgres + pgvector and cites pages. The agent starts with a small base prompt and an index of skills, and reads a skill before it can use that skill's tools.
 
-![RAG Flow](rag-graph.png)
+**Stack:** FastAPI · LangChain/LangGraph · Gemini (`gemini-3.5-flash-lite` default) · Groq (`qwen/qwen3.8-27b`) · Ollama (`qwen3-embedding:0.6b`) · PostgreSQL 18 + pgvector · Alembic · uv · React + Vite + Tailwind + shadcn/ui
 
-## Node Descriptions
+## Documentation
 
-The system now follows a streamlined, agentic flow:
+| Doc | Use |
+| --- | --- |
+| [CLAUDE.md](CLAUDE.md) | Rules for coding agents: invariants, doc rules, coding and testing standards |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, flow diagrams, data model, key decisions, extension points |
+| [docs/FLOW.md](docs/FLOW.md) | What is implemented now, file by file; constants; how to test and check by hand |
+| [docs/skill-template/SKILL.md](docs/skill-template/SKILL.md) | Template and rules for a new skill |
 
-- **Ingestor Node**: If the user uploads PDF files, this node processes the documents, extracts text, and stores embeddings in the vector database (ChromaDB). If no files are uploaded, this step is skipped.
-- **Router Agent Node**: The entry point for every user query. This is an agent node with access to both the vector database (for document retrieval) and web search tools (Tavily, DuckDuckGo, etc). It decides, for each query, how to combine document and web knowledge to generate the best possible answer.
-- **Rewrite Node**: Takes the answer from the router agent and rewrites it for clarity, completeness, and presentability using LLM reasoning and formatting.
-- **Chat Routing Node**: Determines whether the conversation should continue (awaiting further user input) or finish (ending the session).
+## Setup (Windows, one time)
 
-## About
+Everything runs natively; there is no Docker locally.
 
-Agentic RAG is an interactive, graph-based Retrieval-Augmented Generation (RAG) system that lets you query your own PDFs or the web using a modern Streamlit UI. Powered by LLM reasoning, the system uses LangGraph to coordinate a set of intelligent agent nodes, each handling a specialized part of the workflow:
-
-- **PDF & Web Q&A**: Upload PDF files and ask questions about your documents, or enable web search for open-domain queries.
-- **Agentic Workflow**: A Router Agent Node autonomously decides how to combine document retrieval and web search tools (like Tavily, DuckDuckGo) to answer your query.
-- **LLM-Powered Reasoning**: Answers are refined for clarity and completeness by a dedicated Rewrite Node using LLMs.
-- **Conversation Memory**: Maintains context and state across multiple chat turns for a seamless experience.
-
----
-
-## Tech Stack & Tools
-
-Python, LangGraph, LangChain, Gemini LLM, Tavily Search, ChromaDB, Streamlit
-
----
-
-## Quick Start
-
-### Install dependencies
-```bash
-pip install -r requirements.txt
+### 1. uv
+```powershell
+winget install --id=astral-sh.uv -e
 ```
+Open a new terminal and check `uv --version`.
 
-1. **Set up environment variables**
-   - Create a `.env` file in the project root with:
-      ```env
-      # ChromaDB Cloud Configuration (Required)
-      CHROMA_API_KEY="your_chroma_api_key_here"
-      CHROMA_TENANT="your_tenant_id_here"
-      CHROMA_DATABASE="your_database_name_here"
-      
-      # Existing API Keys
-      GOOGLE_GENAI_API_KEYS="your_gemini_api_key1,your_gemini_api_key2"
-      TAVILY_API_KEY="your_tavily_api_key"
-      ```
-2. **Run the Streamlit app**
-   ```bash
-   streamlit run streamlit_app.py
+### 2. PostgreSQL 18
+1. Install from https://www.postgresql.org/download/windows/ (EDB) with defaults: port `5432`, a password for `postgres`. Skip Stack Builder.
+2. Add `C:\Program Files\PostgreSQL\18\bin` to your user `PATH` and check `psql --version`.
+
+### 3. pgvector (built from source; there is no Windows installer)
+1. Install **Visual Studio Build Tools** with the **"Desktop development with C++"** workload: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+2. Open **"x64 Native Tools Command Prompt for VS"** *as Administrator*. It must be the **x64** prompt: the default developer prompt builds 32-bit and fails with `error C2196: case value '4' already used` in `tupmacs.h` (delete `src\*.obj` after a failed attempt).
+   ```bat
+   set "PGROOT=C:\Program Files\PostgreSQL\18"
+   cd %TEMP%
+   git clone --branch v0.8.1 https://github.com/pgvector/pgvector.git
+   cd pgvector
+   nmake /F Makefile.win
+   nmake /F Makefile.win install
    ```
-3. **Use the UI**
-   - Upload PDF files and ask questions, or enable Web Search for open-domain queries.
-   - View the agent's response and the reasoning graph.
+   PostgreSQL 18 needs pgvector 0.8.1 or newer.
 
----
+### 4. Databases and role
+```powershell
+psql -U postgres
+```
+```sql
+CREATE ROLE app LOGIN PASSWORD 'app';
+CREATE DATABASE agentic_rag OWNER app;
+CREATE DATABASE agentic_rag_test OWNER app;
+\c agentic_rag
+CREATE EXTENSION vector;
+\c agentic_rag_test
+CREATE EXTENSION vector;
+\q
+```
+The superuser creates the extension once; migrations only run `CREATE EXTENSION IF NOT EXISTS`.
 
-## Project Structure
+### 5. Ollama
+Install the latest version from https://ollama.com/download, then:
+```powershell
+ollama pull qwen3-embedding:0.6b
+```
+
+For the Gemini chat models, create a free key at https://aistudio.google.com/apikey and set `GOOGLE_API_KEY` in `backend/.env`. With it, the question and the retrieved passages are sent to Google. Free-tier quotas are small and per model per day (see `docs/FLOW.md` §4).
+
+For the Groq chat models, create a key at https://console.groq.com/keys and set `GROQ_API_KEY` in `backend/.env`. The question and the retrieved passages are sent to Groq. Set at least one of `GOOGLE_API_KEY` / `GROQ_API_KEY`; the app does not start without a chat model.
+
+### 6. Project
+```powershell
+cd backend
+copy .env.example .env      # adjust passwords if you changed them
+uv sync
+uv run alembic upgrade head
+uv run pre-commit install
+
+cd ..\frontend
+copy .env.example .env      # optional; VITE_API_URL defaults to http://localhost:8000
+npm install
+```
+
+## Run
+
+| Task | Where | Command |
+|---|---|---|
+| API (reload) | `backend/` | `uv run uvicorn app.main:create_app --factory --reload` |
+| UI | `frontend/` | `npm run dev` → http://localhost:5173 |
+| Health / readiness | | http://localhost:8000/health, http://localhost:8000/ready |
+| API docs | | http://localhost:8000/docs |
+
+Upload PDFs in the **Library** view, then ask questions in a chat. To check by hand with curl, see [docs/FLOW.md](docs/FLOW.md#13-check-by-hand).
+
+## Develop
+
+| Task | Where | Command |
+|---|---|---|
+| Lint / format / typecheck | `backend/` | `uv run ruff check` · `uv run ruff format` · `uv run mypy` |
+| Tests | `backend/` | `uv run pytest -rs` |
+| New migration | `backend/` | `uv run alembic revision -m "<message>"` |
+| Undo last migration | `backend/` | `uv run alembic downgrade -1` |
+| Lint / build UI | `frontend/` | `npm run lint` · `npm run build` |
+| Add a shadcn component | `frontend/` | `npx shadcn@latest add <name>` |
+
+Tests that need Postgres skip unless `TEST_DATABASE_URL` is set; Ollama tests skip if Ollama isn't running, and live Gemini/Groq tests skip without their key. **`TEST_DATABASE_URL` must point to a disposable database**: migration tests downgrade it to an empty schema. CI (`.github/workflows/`) runs lint, format check, mypy and the tests against a `pgvector/pgvector:pg18` container.
+
+## Repository layout
 
 ```
-agentic-rag/
-├── app.py                # FastAPI entry point
-├── streamlit_app.py      # Main Streamlit UI
-├── requirements.txt      # Python dependencies
-├── src/
-│   ├── graphs/           # Graph builder and node implementations
-│   │   └── nodes/        # Individual node logic
-│   ├── utils/            # Core utilities
-│   ├── tools/            # External tool integrations
-│   ├── helpers/          # Helper functions and templates
-│   ├── data/             # VectorDB storage
-│   └── routers/          # API endpoints
+backend/    FastAPI app (app/), Alembic migrations, tests, config/models.yaml
+frontend/   React + Vite UI
+docs/       ARCHITECTURE.md, FLOW.md, skill-template/
 ```
 
----
-
-## Configuration
-
-- **Environment variables** (set in `.env`):
-  - `CHROMA_API_KEY`: ChromaDB Cloud API key (required)
-  - `CHROMA_TENANT`: ChromaDB Cloud tenant ID (required)
-  - `CHROMA_DATABASE`: ChromaDB Cloud database name (required)
-  - `GOOGLE_GENAI_API_KEYS`: Comma-separated Gemini API keys
-  - `TAVILY_API_KEY`: Tavily web search API key
-
-### Vector Database
-- **ChromaDB Cloud**: Uses Chroma Cloud for vector storage and retrieval
-
-### APIs (Not implemented)
-The system also includes a FastAPI backend with the following endpoints:
-- `POST /graph/start` - Start a new conversation thread
-- `POST /graph/continue` - Continue an existing conversation
-- `POST /graph/finish` - Finish a conversation session
-
----
+The previous Streamlit version lives in git history.

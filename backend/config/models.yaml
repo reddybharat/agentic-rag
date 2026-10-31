@@ -1,0 +1,18 @@
+# Chat model catalog. The first entry is the default; the chat input offers every entry.
+# `options` are passed to the provider's chat model (ChatGroq / ChatGoogleGenerativeAI fields).
+# Entries are skipped (and logged) when their provider's key (GOOGLE_API_KEY / GROQ_API_KEY) is not set.
+# Free-tier Gemini quotas are per model per day (measured 2026-10-31: 20 requests/day for
+# gemini-3.6-flash, a document question takes 3), so the default is the lite model.
+models:
+  - id: gemini-3.5-flash-lite
+    provider: gemini
+    model_name: gemini-3.5-flash-lite
+    supports_tools: true
+  - id: gemini-3.6-flash
+    provider: gemini
+    model_name: gemini-3.6-flash
+    supports_tools: true
+  - id: qwen3.8-27b
+    provider: groq
+    model_name: qwen/qwen3.8-27b
+    supports_tools: true
