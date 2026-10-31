@@ -20,7 +20,7 @@ engine (SQLAlchemy async, asyncpg, pool_pre_ping)
 ModelFactory.from_yaml(config/models.yaml, {"ollama": OllamaChatProvider})
 SessionService(uow, owner, fast model, prompts/title.md)
 OllamaEmbedder(qwen3-embedding:0.6b, dim 1024)
-DocumentService(uow, embedder, load_pdf_pages, split_words, MAX_UPLOAD_BYTES)
+DocumentService(uow, owner, embedder, load_pdf_pages, split_words, MAX_UPLOAD_BYTES)
 CapabilityRegistry([DocumentsCapabilityProvider(prompts/documents.md,
                                                 documents.search, documents.has_ready)])
 agent = build_agent(smart model, prompts/system.md, registry)
@@ -40,13 +40,14 @@ All settings live in `app/core/config.py` (`Settings`, pydantic-settings, case-i
 | `DATABASE_URL` | required | app DB (`postgresql+asyncpg://…`) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | chat + embeddings |
 | `LOG_LEVEL` / `LOG_JSON` | `INFO` / `true` | logging (`.env.example` sets `LOG_JSON=false` for dev) |
-| `DEFAULT_OWNER_ID` | `local` | owner of every session until auth exists |
+| `DEFAULT_OWNER_ID` | `local` | owner of every session and document until auth exists |
 | `READINESS_TIMEOUT_S` | `2.0` | per-check timeout in `/ready` |
 | `MODELS_CONFIG_PATH` | `config/models.yaml` | chat model catalog |
 | `LLM_TIMEOUT_S` | `120.0` | HTTP timeout for Ollama chat and embedding calls |
 | `EMBEDDING_MODEL` | `qwen3-embedding:0.6b` | embedder; stored on each document |
 | `EMBEDDING_DIM` | `1024` | requested vector size; **must equal** the `vector(1024)` column from migration 0003 |
 | `MAX_UPLOAD_BYTES` | `20971520` (20 MiB) | upload size limit |
+| `CORS_ORIGINS` | `["http://localhost:5173"]` | browser origins allowed to call the API (JSON list) |
 
 Tests read `TEST_DATABASE_URL` separately (`tests/conftest.py`).
 
@@ -105,12 +106,12 @@ Qwen3-Embedding is trained asymmetrically: queries carry an instruction and docu
 ## 5. Ingestion: from upload to searchable chunks
 
 ```text
-POST /sessions/{id}/documents (multipart "file")
-  route: session resolved by owner filter (404 otherwise), file.read()
+POST /documents (multipart "file", one file per request)
+  route: file.read()
   DocumentService.upload
     1. len(data) > MAX_UPLOAD_BYTES       → 413 payload_too_large
     2. not data.startswith(b"%PDF-")      → 422 invalid_document
-    3. sha256 already in this session     → 409 conflict  (also a DB unique constraint)
+    3. sha256 already in the library      → 409 conflict  (also a DB unique constraint on (owner_id, sha256))
     4. insert documents row, status = pending, embedding_model = current
   response 202 {id, filename, status: "pending", ...}
   background task: DocumentService.ingest(document_id, data)
@@ -123,7 +124,9 @@ POST /sessions/{id}/documents (multipart "file")
                                            error = "Could not read this PDF." (or the message from c)
 ```
 
-Poll `GET /sessions/{id}/documents` to see `pending → ready | failed`.
+Poll `GET /documents` to see `pending → ready | failed`. `DELETE /documents/{id}` removes a document and, through `ON DELETE CASCADE`, its chunks (404 for an unknown id or another owner's). Deleting a document while it is still ingesting makes the background task fail on `mark_ready` and log `ingestion_failed`; nothing is left behind.
+
+The frontend uploads several files as several parallel requests, so each file gets its own status and error.
 
 ### Page loading (`app/infra/rag/pdf_loader.py`)
 `pypdf.PdfReader(...).pages[i].extract_text()`. Layout, tables and images are flattened or lost. Image-only (scanned) pages return empty text; there is no OCR.
@@ -137,10 +140,10 @@ Poll `GET /sessions/{id}/documents` to see `pending → ready | failed`.
 
 A dense page of about 3,000 characters becomes roughly 4 chunks. The 4 sample pages are about 300 characters each, so 1 chunk per page.
 
-### Storage (migration `0003`)
-- `documents`: one row per uploaded PDF, with a unique constraint on `(session_id, sha256)`.
-- `chunks`: `page, ordinal, content, embedding vector(1024)`, plus `session_id` copied from the document so search filters without a join. Indexes cover `document_id`, `session_id` and an HNSW cosine index on `embedding`.
-- Deleting a session cascades to its documents and chunks.
+### Storage (migrations `0003`, `0004`)
+- `documents`: one row per library PDF, with a unique constraint on `(owner_id, sha256)`.
+- `chunks`: `page, ordinal, content, embedding vector(1024)`, plus `owner_id` copied from the document so search filters without a join. Indexes cover `document_id`, `owner_id` and an HNSW cosine index on `embedding`.
+- Deleting a document cascades to its chunks. Documents are independent of sessions.
 
 ---
 
@@ -148,11 +151,11 @@ A dense page of about 3,000 characters becomes roughly 4 chunks. The 4 sample pa
 
 `search_docs(query)` (`app/agent/capabilities/builtin/documents.py`):
 
-1. `session_id` comes from the run's `AgentContext`, **not from the model**, so the model can't search another session.
+1. `owner_id` comes from the run's `AgentContext`, **not from the model**, so the model can't search another owner's library.
 2. `embed_query(query)` (with the instruction prefix, see §4).
 3. `SqlDocumentRepository.search`:
-   - `SET LOCAL hnsw.iterative_scan = strict_order`. HNSW finds nearest neighbours first and filters afterwards. Without iterative scan, a session filter applied to the default 40 candidates could return fewer than `limit` rows when many sessions exist.
-   - Top `SEARCH_LIMIT = 4` chunks of this session by cosine distance.
+   - `SET LOCAL hnsw.iterative_scan = strict_order`. HNSW finds nearest neighbours first and filters afterwards. Without iterative scan, an owner filter applied to the default 40 candidates could return fewer than `limit` rows when many owners exist.
+   - Top `SEARCH_LIMIT = 4` chunks of this owner's library by cosine distance.
    - For each hit, fetch chunks `ordinal ± 1` **on the same page** as context. Context from another page used to be shown under the hit's page header, and the model then cited the wrong page.
 4. Format, with each context side cut to `CONTEXT_CHARS = 300`:
 
@@ -163,7 +166,7 @@ Context before: …<last 300 chars of the previous chunk on this page>
 Context after: <first 300 chars of the next chunk on this page>…
 ```
 
-No hits → `No matching passages in this session's documents.` Only chunks of `ready` documents exist, because chunks are written in the same transaction that marks the document ready.
+No hits → `No matching passages in the document library.` Only chunks of `ready` documents exist, because chunks are written in the same transaction that marks the document ready.
 
 ---
 
@@ -178,7 +181,7 @@ create_agent(smart model, system_prompt=system.md,
 ```
 
 - **State** (`app/agent/state.py`): `messages` plus `active_capabilities: list[str]`, whose reducer merges names without duplicates. The state lives for **one run only**: there is no checkpointer, so every turn starts empty.
-- **Context:** `AgentContext(session_id)` is passed per run by `ChatService` and is readable by middleware and tools.
+- **Context:** `AgentContext(owner_id)` is passed per run by `ChatService` and is readable by middleware and tools.
 
 ### Capabilities (progressive disclosure)
 A `Capability` (`app/domain/models.py`) is `{name, description, instructions, tools, auto_activate_when}`. Providers return them from `discover()`. `CapabilityRegistry` collects all of them at startup and rejects duplicate names.
@@ -186,7 +189,7 @@ A `Capability` (`app/domain/models.py`) is `{name, description, instructions, to
 `CapabilityGate` (`app/agent/middleware/capability_gate.py`) does four things:
 
 1. **Registers every tool at build time** (`self.tools`): `load_capability` plus all capability tools. `create_agent` can't add tools mid-run, so visibility is filtered instead.
-2. **`abefore_agent`, once per turn:** runs each capability's `auto_activate_when(session_id)`. For `documents` that is "does this session have a `ready` document?" (one `EXISTS` query). It costs no model call.
+2. **`abefore_agent`, once per turn:** runs each capability's `auto_activate_when(owner_id)`. For `documents` that is "does this owner have a `ready` document?" (one `EXISTS` query). It costs no model call.
 3. **`awrap_model_call`, before every model call:**
    - tools the model sees = tools of the active capabilities, plus `load_capability` if any capability is still inactive;
    - system prompt = `system.md` + `## Capability: <name>\n<instructions>` for each active one + a `## More capabilities` catalog (name: description) for the inactive ones.
@@ -210,7 +213,7 @@ A `Capability` (`app/domain/models.py`) is `{name, description, instructions, to
 `POST /sessions/{id}/messages {"text": "..."}` (1–8000 characters after trimming, otherwise 422).
 
 1. The `get_session` dependency loads the session with the owner filter. An unknown session gives 404 **before** the stream starts.
-2. `ChatService.stream` calls `agent.astream({"messages": [HumanMessage(text)]}, stream_mode=["messages", "updates"], context=AgentContext(session.id))`.
+2. `ChatService.stream` calls `agent.astream({"messages": [HumanMessage(text)]}, stream_mode=["messages", "updates"], context=AgentContext(session.owner_id))`.
    - `messages` mode → `AIMessageChunk`s → a `token` event for each non-empty `.text` (thinking content never appears in `.text`). `usage_metadata` is summed across all model calls in the turn.
    - `updates` mode → per-node results: an `AIMessage` with `tool_calls` gives `tool_start` per call, and a `ToolMessage` gives `tool_end` (`ok = status != "error"`).
 3. Any exception during the stream → logged with traceback → one `error` event (`chat_failed`). No usage is saved.
@@ -232,8 +235,8 @@ Order: (`tool_start`/`tool_end` and `token` interleaved)* then exactly one `done
 ## 9. Persistence rules
 
 - **Unit of work** (`app/infra/db/unit_of_work.py`): each `async with uow()` is one session and transaction. Nothing persists unless `commit()` is called; leaving the block without a commit rolls back.
-- **Owner scoping:** every `SessionRepository` method filters by `owner_id`, so another owner's session behaves as missing (404). Document and chunk queries filter by `session_id`, which is only ever obtained through that owner-filtered lookup (route dependency or `AgentContext`).
-- **Migrations:** one per phase in `migrations/versions/` (`0001` sessions + `vector` extension, `0002` turn_usage, `0003` documents + chunks). `env.py` is async and reads `DATABASE_URL` unless `sqlalchemy.url` is set (tests set it to the test DB).
+- **Owner scoping:** every `SessionRepository` method filters by `owner_id`, so another owner's session behaves as missing (404). Document and chunk queries filter by `owner_id` as well (`DocumentService` uses the configured owner; the agent gets it from `AgentContext`).
+- **Migrations:** one per phase in `migrations/versions/` (`0001` sessions + `vector` extension, `0002` turn_usage, `0003` documents + chunks, `0004` documents/chunks scoped to the owner). `env.py` is async and reads `DATABASE_URL` unless `sqlalchemy.url` is set (tests set it to the test DB).
 
 ---
 

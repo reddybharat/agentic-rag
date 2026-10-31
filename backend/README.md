@@ -105,10 +105,10 @@ SELECT model_id, input_tokens, output_tokens, latency_ms FROM turn_usage ORDER B
 With the API running (`uv run uvicorn app.main:create_app --factory --reload`), in a second PowerShell:
 
 ```powershell
+curl.exe -F "file=@tests/fixtures/sample.pdf;type=application/pdf" http://localhost:8000/documents
+curl.exe http://localhost:8000/documents      # library; status: pending -> ready
 $s = (Invoke-RestMethod -Method Post http://localhost:8000/sessions -ContentType application/json -Body '{}').id
-curl.exe -F "file=@tests/fixtures/sample.pdf;type=application/pdf" http://localhost:8000/sessions/$s/documents
-curl.exe http://localhost:8000/sessions/$s/documents      # status: pending -> ready
 curl.exe -N -X POST http://localhost:8000/sessions/$s/messages -H "Content-Type: application/json" -d '{\"text\":\"What is the phase two budget?\"}'
 ```
 
-Expect `tool_start` (search_docs) → `tool_end` → `token`… → `done`, with a citation like `(sample.pdf, p. 3)`. Uploading the same file again returns 409. Interactive API docs: http://localhost:8000/docs. The facts in `sample.pdf` are listed in [docs/internals.md](../docs/internals.md#11-tests-and-the-sample-pdf).
+Expect `tool_start` (search_docs) → `tool_end` → `token`… → `done`, with a citation like `(sample.pdf, p. 3)`. Uploading the same file again returns 409; `curl.exe -X DELETE http://localhost:8000/documents/<id>` removes it from the library. Any session can answer from any library document. Interactive API docs: http://localhost:8000/docs. The facts in `sample.pdf` are listed in [docs/internals.md](../docs/internals.md#11-tests-and-the-sample-pdf).

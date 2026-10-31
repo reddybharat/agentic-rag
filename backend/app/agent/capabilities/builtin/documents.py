@@ -1,4 +1,3 @@
-import uuid
 from collections.abc import Awaitable, Callable
 
 from langchain.tools import ToolRuntime
@@ -8,10 +7,10 @@ from app.agent.state import AgentContext, CapabilityState
 from app.domain.models import Capability, ChunkHit
 
 NAME = "documents"
-DESCRIPTION = "Search the PDFs uploaded to this session and answer with page citations."
+DESCRIPTION = "Search the user's uploaded PDF library and answer with page citations."
 SEARCH_LIMIT = 4
 CONTEXT_CHARS = 300
-NO_HITS = "No matching passages in this session's documents."
+NO_HITS = "No matching passages in the document library."
 
 
 def _format(hit: ChunkHit) -> str:
@@ -27,8 +26,8 @@ class DocumentsCapabilityProvider:
     def __init__(
         self,
         instructions: str,
-        search: Callable[[uuid.UUID, str, int], Awaitable[list[ChunkHit]]],
-        has_ready: Callable[[uuid.UUID], Awaitable[bool]],
+        search: Callable[[str, str, int], Awaitable[list[ChunkHit]]],
+        has_ready: Callable[[str], Awaitable[bool]],
     ) -> None:
         self._instructions = instructions
         self._search = search
@@ -41,8 +40,8 @@ class DocumentsCapabilityProvider:
         async def search_docs(
             query: str, runtime: ToolRuntime[AgentContext, CapabilityState]
         ) -> str:
-            """Search this session's documents. Returns passages with filename and page."""
-            hits = await search(runtime.context.session_id, query, SEARCH_LIMIT)
+            """Search the document library. Returns passages with filename and page."""
+            hits = await search(runtime.context.owner_id, query, SEARCH_LIMIT)
             return "\n\n".join(_format(hit) for hit in hits) or NO_HITS
 
         return [

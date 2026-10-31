@@ -56,10 +56,8 @@ def test_ready_fails_when_documents_use_another_embedding_model(
     migrated_database_url: str, run_sql: RunSql
 ) -> None:
     run_sql(
-        "WITH s AS (INSERT INTO sessions (id, owner_id, title) "
-        "VALUES (gen_random_uuid(), 'local', 't') RETURNING id) "
-        "INSERT INTO documents (id, session_id, filename, sha256, embedding_model, status) "
-        "SELECT gen_random_uuid(), id, 'a.pdf', 'x', 'other-embedder', 'ready' FROM s"
+        "INSERT INTO documents (id, owner_id, filename, sha256, embedding_model, status) "
+        "VALUES (gen_random_uuid(), 'local', 'a.pdf', 'x', 'other-embedder', 'ready')"
     )
     with TestClient(create_app(Settings(database_url=migrated_database_url))) as client:
         response = client.get("/ready")

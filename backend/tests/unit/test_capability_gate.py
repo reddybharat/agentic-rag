@@ -1,5 +1,3 @@
-import uuid
-
 import pytest
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -71,20 +69,19 @@ def test_registry_rejects_duplicate_names() -> None:
         CapabilityRegistry([_Provider(DOCS), _Provider(DOCS)])
 
 
-async def test_auto_activation_runs_rules_with_session_id() -> None:
-    seen: list[uuid.UUID] = []
+async def test_auto_activation_runs_rules_with_owner_id() -> None:
+    seen: list[str] = []
 
-    async def has_docs(session_id: uuid.UUID) -> bool:
-        seen.append(session_id)
+    async def has_docs(owner_id: str) -> bool:
+        seen.append(owner_id)
         return True
 
     auto = Capability("docs", "d", "i", [lookup], auto_activate_when=has_docs)
     gate = CapabilityGate(CapabilityRegistry([_Provider(auto)]))
-    session_id = uuid.uuid4()
 
     update = await gate.abefore_agent(
-        {"messages": []}, Runtime(context=AgentContext(session_id=session_id))
+        {"messages": []}, Runtime(context=AgentContext(owner_id="alice"))
     )
 
     assert update == {"active_capabilities": ["docs"]}
-    assert seen == [session_id]
+    assert seen == ["alice"]

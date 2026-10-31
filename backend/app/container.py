@@ -65,7 +65,12 @@ class Container:
             settings.llm_timeout_s,
         )
         documents = DocumentService(
-            uow, embedder, load_pdf_pages, split_words, settings.max_upload_bytes
+            uow,
+            settings.default_owner_id,
+            embedder,
+            load_pdf_pages,
+            split_words,
+            settings.max_upload_bytes,
         )
         registry = CapabilityRegistry(
             [

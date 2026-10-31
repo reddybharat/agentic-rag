@@ -1,12 +1,12 @@
 import uuid
 
-from sqlalchemy import exists, select, text, update
+from sqlalchemy import delete, exists, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.models import ChunkHit, ChunkIn, Document, DocumentStatus
 from app.infra.db.orm import ChunkRow, DocumentRow
 
-# Keep scanning the HNSW index until `limit` rows pass the session filter (pgvector >= 0.8).
+# Keep scanning the HNSW index until `limit` rows pass the owner filter (pgvector >= 0.8).
 ITERATIVE_SCAN_SQL = "SET LOCAL hnsw.iterative_scan = strict_order"
 
 
@@ -15,10 +15,10 @@ class SqlDocumentRepository:
         self._db = db
 
     async def add(
-        self, session_id: uuid.UUID, filename: str, sha256: str, embedding_model: str
+        self, owner_id: str, filename: str, sha256: str, embedding_model: str
     ) -> Document:
         row = DocumentRow(
-            session_id=session_id,
+            owner_id=owner_id,
             filename=filename,
             sha256=sha256,
             embedding_model=embedding_model,
@@ -29,28 +29,37 @@ class SqlDocumentRepository:
         await self._db.refresh(row)
         return Document.model_validate(row)
 
-    async def get_by_sha256(self, session_id: uuid.UUID, sha256: str) -> Document | None:
+    async def get_by_sha256(self, owner_id: str, sha256: str) -> Document | None:
         row = await self._db.scalar(
             select(DocumentRow).where(
-                DocumentRow.session_id == session_id, DocumentRow.sha256 == sha256
+                DocumentRow.owner_id == owner_id, DocumentRow.sha256 == sha256
             )
         )
         return None if row is None else Document.model_validate(row)
 
-    async def list_by_session(self, session_id: uuid.UUID) -> list[Document]:
+    async def list_by_owner(self, owner_id: str) -> list[Document]:
         rows = await self._db.scalars(
             select(DocumentRow)
-            .where(DocumentRow.session_id == session_id)
+            .where(DocumentRow.owner_id == owner_id)
             .order_by(DocumentRow.created_at)
         )
         return [Document.model_validate(row) for row in rows]
 
-    async def has_ready(self, session_id: uuid.UUID) -> bool:
+    async def delete(self, owner_id: str, document_id: uuid.UUID) -> bool:
+        # Chunks go with the document through the foreign key's ON DELETE CASCADE.
+        deleted = await self._db.scalar(
+            delete(DocumentRow)
+            .where(DocumentRow.id == document_id, DocumentRow.owner_id == owner_id)
+            .returning(DocumentRow.id)
+        )
+        return deleted is not None
+
+    async def has_ready(self, owner_id: str) -> bool:
         return bool(
             await self._db.scalar(
                 select(
                     exists().where(
-                        DocumentRow.session_id == session_id,
+                        DocumentRow.owner_id == owner_id,
                         DocumentRow.status == DocumentStatus.READY,
                     )
                 )
@@ -60,16 +69,16 @@ class SqlDocumentRepository:
     async def mark_ready(
         self, document_id: uuid.UUID, page_count: int, chunks: list[ChunkIn]
     ) -> None:
-        session_id = await self._db.scalar(
+        owner_id = await self._db.scalar(
             update(DocumentRow)
             .where(DocumentRow.id == document_id)
             .values(status=DocumentStatus.READY, page_count=page_count, error=None)
-            .returning(DocumentRow.session_id)
+            .returning(DocumentRow.owner_id)
         )
-        if session_id is None:
+        if owner_id is None:
             raise LookupError(f"Document {document_id} not found")
         self._db.add_all(
-            ChunkRow(document_id=document_id, session_id=session_id, **chunk.model_dump())
+            ChunkRow(document_id=document_id, owner_id=owner_id, **chunk.model_dump())
             for chunk in chunks
         )
 
@@ -80,15 +89,13 @@ class SqlDocumentRepository:
             .values(status=DocumentStatus.FAILED, error=error)
         )
 
-    async def search(
-        self, session_id: uuid.UUID, embedding: list[float], limit: int
-    ) -> list[ChunkHit]:
+    async def search(self, owner_id: str, embedding: list[float], limit: int) -> list[ChunkHit]:
         await self._db.execute(text(ITERATIVE_SCAN_SQL))
         hits = (
             await self._db.execute(
                 select(ChunkRow, DocumentRow.filename)
                 .join(DocumentRow, DocumentRow.id == ChunkRow.document_id)
-                .where(ChunkRow.session_id == session_id)
+                .where(ChunkRow.owner_id == owner_id)
                 .order_by(ChunkRow.embedding.cosine_distance(embedding))
                 .limit(limit)
             )

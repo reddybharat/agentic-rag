@@ -61,7 +61,7 @@ class CapabilityGate(AgentMiddleware[CapabilityState, AgentContext, Any]):
             c.name
             for c in self._registry.capabilities
             if c.auto_activate_when is not None
-            and await c.auto_activate_when(runtime.context.session_id)
+            and await c.auto_activate_when(runtime.context.owner_id)
         ]
         return {"active_capabilities": active} if active else None
 

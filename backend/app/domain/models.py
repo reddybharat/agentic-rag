@@ -36,8 +36,8 @@ class Capability:
     description: str
     instructions: str
     tools: Sequence[BaseTool]
-    # Activates the capability for a session's turn without the model asking for it.
-    auto_activate_when: Callable[[uuid.UUID], Awaitable[bool]] | None = None
+    # Activates the capability for an owner's turn without the model asking for it.
+    auto_activate_when: Callable[[str], Awaitable[bool]] | None = None
 
 
 DEFAULT_SESSION_TITLE = "New chat"
@@ -45,7 +45,7 @@ MAX_TITLE_CHARS = 200
 
 
 class Session(BaseModel):
-    """A document workspace; each chat turn in it is answered on its own (no history)."""
+    """A chat; each turn is answered on its own (no history) from the owner's document library."""
 
     model_config = ConfigDict(frozen=True, from_attributes=True)
 
@@ -73,12 +73,12 @@ class DocumentStatus(StrEnum):
 
 
 class Document(BaseModel):
-    """An uploaded PDF, scoped to one session; searchable once `ready`."""
+    """A PDF in the owner's library, searched by all their sessions once `ready`."""
 
     model_config = ConfigDict(frozen=True, from_attributes=True)
 
     id: uuid.UUID
-    session_id: uuid.UUID
+    owner_id: str
     filename: str
     sha256: str
     page_count: int | None

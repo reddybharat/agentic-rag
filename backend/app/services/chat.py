@@ -55,7 +55,7 @@ class ChatService:
             async for mode, payload in self._agent.astream(
                 {"messages": [HumanMessage(text)]},
                 stream_mode=["messages", "updates"],
-                context=AgentContext(session_id=session.id),
+                context=AgentContext(owner_id=session.owner_id),
             ):
                 if mode == "updates":
                     for event in _tool_events(cast(dict[str, Any], payload)):

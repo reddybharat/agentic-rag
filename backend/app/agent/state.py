@@ -1,4 +1,3 @@
-import uuid
 from dataclasses import dataclass
 from typing import Annotated, NotRequired
 
@@ -16,4 +15,4 @@ class CapabilityState(AgentState[None]):
 
 @dataclass(frozen=True)
 class AgentContext:
-    session_id: uuid.UUID
+    owner_id: str

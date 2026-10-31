@@ -52,7 +52,7 @@ async def _execute(database_url: str, sql: str) -> list[tuple[object, ...]]:
 def migrated_database_url(test_database_url: str, alembic_config: Config) -> str:
     """The test database at the latest schema, with all app data removed."""
     command.upgrade(alembic_config, "head")
-    asyncio.run(_execute(test_database_url, "TRUNCATE sessions CASCADE"))
+    asyncio.run(_execute(test_database_url, "TRUNCATE sessions, documents CASCADE"))
     return test_database_url
 
 

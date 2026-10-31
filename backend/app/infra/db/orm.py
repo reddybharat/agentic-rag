@@ -40,9 +40,7 @@ class DocumentRow(Base):
     __tablename__ = "documents"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    session_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("sessions.id", ondelete="CASCADE"), index=True
-    )
+    owner_id: Mapped[str] = mapped_column(String(64), index=True)
     filename: Mapped[str] = mapped_column(String(255))
     sha256: Mapped[str] = mapped_column(String(64))
     page_count: Mapped[int | None]
@@ -59,7 +57,7 @@ class ChunkRow(Base):
     document_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"), index=True
     )
-    session_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    owner_id: Mapped[str] = mapped_column(String(64), index=True)
     page: Mapped[int]
     ordinal: Mapped[int]
     content: Mapped[str] = mapped_column(Text)

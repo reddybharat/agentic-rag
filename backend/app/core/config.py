@@ -19,3 +19,4 @@ class Settings(BaseSettings):
     embedding_model: str = "qwen3-embedding:0.6b"
     embedding_dim: int = 1024
     max_upload_bytes: int = 20 * 1024 * 1024
+    cors_origins: list[str] = ["http://localhost:5173"]
